@@ -44,21 +44,21 @@ class RegionSelectionOverlay(QWidget):
 
     def mousePressEvent(self, event) -> None:
         if event.button() == Qt.MouseButton.LeftButton:
-            self.start = event.position().toPoint()
+            self.start = self.mapFromGlobal(event.globalPosition().toPoint())
             self.current = self.start
             self.update()
 
     def mouseMoveEvent(self, event) -> None:
         if self.start is not None:
-            self.current = event.position().toPoint()
+            self.current = self.mapFromGlobal(event.globalPosition().toPoint())
             self.update()
 
     def mouseReleaseEvent(self, event) -> None:
         if self.start is None:
             return
-        end = event.position().toPoint()
+        end = self.mapFromGlobal(event.globalPosition().toPoint())
         local = QRect(self.start, end).normalized()
-        global_rect = local.translated(self.geometry().topLeft())
+        global_rect = QRect(self.mapToGlobal(local.topLeft()), self.mapToGlobal(local.bottomRight())).normalized()
         self.selection_done.emit(global_rect)
         self.close()
 
@@ -177,7 +177,7 @@ class MainWindow(QMainWindow):
         board_layout.addStretch(1)
         layout.addWidget(self.board_area)
         self.board_area.hide()
-        self.board_popup = BoardPopup(self.board, self)
+        self.board_popup = BoardPopup(self.board, None)
         self.board_toggle_button = QPushButton("Spielfeld anzeigen")
         self.board_toggle_button.clicked.connect(self._toggle_board_visibility)
         layout.addWidget(self.board_toggle_button)
@@ -321,15 +321,17 @@ class MainWindow(QMainWindow):
     def _fit_board(self, _value: int = 0) -> None:
         if not all(hasattr(self, name) for name in ("board", "board_area", "board_size_slider", "board_size_value")):
             return
-        area = self.board_area.contentsRect()
-        available = max(80, min(area.width(), area.height()))
+        # Das Brett liegt im separaten Popup. Die versteckte Layout-Fläche
+        # der Settings darf seine Größe daher nicht auf 80 px reduzieren.
+        size = self.board_size_slider.value()
         if self._calibrated_region is not None:
-            size = min(available, self._calibrated_region.width(), self._calibrated_region.height())
-            self.board.setFixedSize(max(80, size), max(80, size))
-        else:
-            size = min(self.board_size_slider.value(), available)
-            self.board.setFixedSize(size, size)
-            self.board_size_value.setText(f"{size} px")
+            size = min(self._calibrated_region.width(), self._calibrated_region.height())
+        size = max(160, size)
+        self.board.setMinimumSize(160, 160)
+        self.board.setMaximumSize(16777215, 16777215)
+        if hasattr(self, "board_popup") and self.board_popup.isVisible() and self._calibrated_region is None:
+            self.board_popup.resize(size, size)
+        self.board_size_value.setText(f"{size} px")
 
     def _start_region_selection(self) -> None:
         if sys.platform != "win32":
@@ -337,12 +339,15 @@ class MainWindow(QMainWindow):
             return
         # Die Auswahl wird auf dem aktuell verwendeten Monitor gestartet.
         # Qt liefert die Mausposition bereits in globalen logischen Bildschirmkoordinaten.
-        screen = QApplication.screenAt(self.frameGeometry().center()) or self.screen()
-        if screen is None:
+        screens = QApplication.screens()
+        if not screens:
             self.status.setText("Kein Bildschirm für die Bereichsauswahl gefunden.")
             return
+        # Overlay über den gesamten virtuellen Desktop legen, damit auch ein
+        # Brett auf einem zweiten Monitor markiert werden kann.
+        virtual = QApplication.primaryScreen().virtualGeometry()
         self.hide()
-        self._selection_overlay = RegionSelectionOverlay(screen.geometry())
+        self._selection_overlay = RegionSelectionOverlay(virtual)
         self._selection_overlay.selection_done.connect(
             lambda rect: self.region_selected.emit(rect.x(), rect.y(), rect.width(), rect.height())
         )
@@ -368,14 +373,15 @@ class MainWindow(QMainWindow):
         rect = QRect(left, top, size, size)
         self._calibrated_region = rect
 
-        # Erst die Zielgeometrie setzen, dann das rahmenlose Fenster anzeigen.
+        # Das Popup ist ein eigenständiges Top-Level-Fenster. Geometrie und
+        # Auswahl liegen beide in globalen Qt-Koordinaten.
         self.board_popup.hide()
-        self.board_popup.setGeometry(rect)
-        self.board.setMinimumSize(80, 80)
+        self.board.setMinimumSize(160, 160)
+        self.board.setMaximumSize(16777215, 16777215)
         self.board.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        self.board_popup.setGeometry(rect)
         self.board_popup.show()
         self.board_popup.raise_()
-        self.board_popup.activateWindow()
         self.board_toggle_button.setText("Spielfeld ausblenden")
         self.show()
         self.raise_()
