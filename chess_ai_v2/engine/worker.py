@@ -41,6 +41,12 @@ class EngineWorker(QObject):
             self.failed.emit(str(exc))
             self.status.emit("Engine-Fehler")
 
+    @Slot(int)
+    def set_multipv(self, value: int) -> None:
+        self.multipv = max(1, min(int(value), 3))
+        if self._running:
+            self.analyze()
+
     @Slot(str)
     def set_position(self, fen: str) -> None:
         try:
