@@ -18,6 +18,7 @@ class BoardWidget(QWidget):
         self.selected: chess.Square | None = None
         self.targets: set[chess.Square] = set()
         self.best_move: chess.Move | None = None
+        self.candidate_moves: list[tuple[chess.Move, float]] = []
         self.free_move_mode = False
         self.visual_opacity = 100
         self._piece_svg_cache: dict[str, QSvgRenderer] = {}
@@ -149,6 +150,7 @@ class BoardWidget(QWidget):
         move = chess.Move(source, square, promotion=promotion)
         self.board.push(move)
         self.best_move = None
+        self.candidate_moves = []
         self.position_changed.emit(self.board.fen())
         self.update()
 
@@ -176,9 +178,23 @@ class BoardWidget(QWidget):
             self.best_move = None
         self.update()
 
+    def set_candidate_moves(self, candidates: list[tuple[str, float]]) -> None:
+        parsed = []
+        for uci, percent in candidates[:3]:
+            try:
+                move = chess.Move.from_uci(uci)
+                if move in self.board.legal_moves:
+                    parsed.append((move, float(percent)))
+            except (ValueError, TypeError):
+                continue
+        self.candidate_moves = parsed
+        self.best_move = parsed[0][0] if parsed else None
+        self.update()
+
     def reset(self) -> None:
         self.board.reset()
         self.best_move = None
+        self.candidate_moves = []
         self._clear_selection()
         self.position_changed.emit(self.board.fen())
         self.update()
@@ -235,28 +251,39 @@ class BoardWidget(QWidget):
                     margin = cell * 0.035
                     renderer.render(painter, rect.adjusted(margin, margin, -margin, -margin))
                     painter.restore()
-        if self.best_move:
-            for sq in (self.best_move.from_square, self.best_move.to_square):
-                file_, rank = chess.square_file(sq), chess.square_rank(sq)
-                col, row = (7-file_, rank) if self.flipped else (file_, 7-rank)
-                painter.setBrush(Qt.BrushStyle.NoBrush)
-                painter.setPen(QPen(QColor("#E5B93F"), max(2, int(cell*0.045))))
-                painter.drawRect(QRectF(x0 + col*cell+2, y0 + row*cell+2, cell-4, cell-4))
-            a, b = self._center(self.best_move.from_square, x0, y0, cell), self._center(self.best_move.to_square, x0, y0, cell)
-            # Draw a clear directional arrow, not just a line.
+        palette = ["#56B4E9", "#E69F00", "#CC79A7"]
+        for index, (move, percent) in enumerate(self.candidate_moves[:3]):
+            color = QColor(palette[index])
+            a = self._center(move.from_square, x0, y0, cell)
+            b = self._center(move.to_square, x0, y0, cell)
             dx, dy = b.x() - a.x(), b.y() - a.y()
             length = (dx * dx + dy * dy) ** 0.5
-            if length > 0:
-                ux, uy = dx / length, dy / length
-                head_len = cell * 0.24
-                half_width = cell * 0.12
-                tip = b
-                base = QPointF(b.x() - ux * head_len, b.y() - uy * head_len)
-                left = QPointF(base.x() - uy * half_width, base.y() + ux * half_width)
-                right = QPointF(base.x() + uy * half_width, base.y() - ux * half_width)
-                shaft_end = QPointF(b.x() - ux * head_len * 0.72, b.y() - uy * head_len * 0.72)
-                painter.setPen(QPen(QColor("#6b4b00"), max(5, int(cell * 0.085)), Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
-                painter.drawLine(a, shaft_end)
-                painter.setPen(Qt.PenStyle.NoPen)
-                painter.setBrush(QColor("#E5B93F"))
-                painter.drawPolygon(QPolygonF([tip, left, right]))
+            if length <= 0:
+                continue
+            ux, uy = dx / length, dy / length
+            head_len = cell * 0.24
+            half_width = cell * 0.12
+            tip = b
+            base = QPointF(b.x() - ux * head_len, b.y() - uy * head_len)
+            left = QPointF(base.x() - uy * half_width, base.y() + ux * half_width)
+            right = QPointF(base.x() + uy * half_width, base.y() - ux * half_width)
+            shaft_end = QPointF(b.x() - ux * head_len * 0.72, b.y() - uy * head_len * 0.72)
+            painter.setPen(QPen(QColor("#15171a"), max(6, int(cell * 0.105)), Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
+            painter.drawLine(a, shaft_end)
+            painter.setPen(QPen(color, max(4, int(cell * 0.065)), Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
+            painter.drawLine(a, shaft_end)
+            painter.setPen(Qt.PenStyle.NoPen)
+            painter.setBrush(QColor("#15171a"))
+            painter.drawPolygon(QPolygonF([tip, left, right]))
+            painter.setBrush(color)
+            inset = cell * 0.025
+            painter.drawPolygon(QPolygonF([tip, QPointF(left.x() + ux*inset, left.y() + uy*inset), QPointF(right.x() + ux*inset, right.y() + uy*inset)]))
+            # Prozentlabel nahe dem Ziel, mit dunklem Hintergrund für Lesbarkeit.
+            label = f"{percent:.1f}%"
+            label_rect = QRectF(b.x() - cell*0.38, b.y() - cell*0.42 - index*cell*0.18, cell*0.76, cell*0.25)
+            painter.setPen(Qt.PenStyle.NoPen)
+            painter.setBrush(QColor(20, 22, 26, 225))
+            painter.drawRoundedRect(label_rect, cell*0.06, cell*0.06)
+            painter.setPen(QPen(color, 1))
+            painter.setFont(painter.font())
+            painter.drawText(label_rect, Qt.AlignmentFlag.AlignCenter, label)
