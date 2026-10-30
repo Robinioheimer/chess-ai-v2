@@ -23,12 +23,17 @@ class BoardWidget(QWidget):
         self.targets: set[chess.Square] = set()
         self.best_move: chess.Move | None = None
         self.free_move_mode = False
+        self.visual_opacity = 100
         self.setMinimumSize(160, 160)
         self.setMouseTracking(True)
 
     def sizeHint(self):
         from PySide6.QtCore import QSize
         return QSize(520, 520)
+
+    def set_visual_opacity(self, value: int) -> None:
+        self.visual_opacity = max(0, min(100, int(value)))
+        self.update()
 
     def square_at(self, point: QPointF) -> chess.Square | None:
         side = min(self.width(), self.height())
@@ -204,20 +209,21 @@ class BoardWidget(QWidget):
         side = min(self.width(), self.height())
         x0, y0 = (self.width() - side) / 2, (self.height() - side) / 2
         cell = side / 8
-        light, dark = QColor("#F1F1F1"), QColor("#55585F")
+        alpha = round(255 * self.visual_opacity / 100)
+        light, dark = QColor(241, 241, 241, alpha), QColor(85, 88, 95, alpha)
         for row in range(8):
             for col in range(8):
                 square = chess.square((7-col if self.flipped else col), (row if self.flipped else 7-row))
                 rect = QRectF(x0 + col*cell, y0 + row*cell, cell, cell)
                 painter.fillRect(rect, light if (row + col) % 2 == 0 else dark)
-                if self.selected == square:
-                    painter.fillRect(rect, QColor(246, 246, 105, 150))
-                if square in self.targets:
-                    painter.setBrush(QColor(20, 20, 20, 85))
+                if self.selected == square and alpha > 0:
+                    painter.fillRect(rect, QColor(246, 246, 105, round(150 * self.visual_opacity / 100)))
+                if square in self.targets and alpha > 0:
+                    painter.setBrush(QColor(20, 20, 20, round(85 * self.visual_opacity / 100)))
                     painter.setPen(Qt.PenStyle.NoPen)
                     painter.drawEllipse(rect.center(), cell*0.13, cell*0.13)
                 piece = self.board.piece_at(square)
-                if piece:
+                if piece and alpha > 0:
                     glyph = PIECES[piece.symbol()]
                     painter.setFont(QFont("Segoe UI Symbol", int(cell*0.72)))
                     if piece.color:
