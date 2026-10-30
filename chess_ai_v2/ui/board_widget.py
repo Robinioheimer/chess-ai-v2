@@ -22,6 +22,7 @@ class BoardWidget(QWidget):
         self.selected: chess.Square | None = None
         self.targets: set[chess.Square] = set()
         self.best_move: chess.Move | None = None
+        self.free_move_mode = False
         self.setMinimumSize(160, 160)
         self.setMouseTracking(True)
 
@@ -46,6 +47,9 @@ class BoardWidget(QWidget):
     def apply_external_click(self, square: chess.Square) -> None:
         """Mirror a physical click observed outside the overlay onto this board."""
         piece = self.board.piece_at(square)
+        if self.free_move_mode:
+            self._free_move_click(square)
+            return
         if self.selected is not None and square in self.targets:
             moving_piece = self.board.piece_at(self.selected)
             move = chess.Move(self.selected, square)
@@ -70,6 +74,9 @@ class BoardWidget(QWidget):
         if square is None:
             return
         piece = self.board.piece_at(square)
+        if self.free_move_mode:
+            self._free_move_click(square)
+            return
         if self.selected is not None and square in self.targets:
             move = chess.Move(self.selected, square)
             if self.board.piece_at(self.selected) and self.board.piece_at(self.selected).piece_type == chess.PAWN and chess.square_rank(square) in (0, 7):
@@ -101,6 +108,53 @@ class BoardWidget(QWidget):
                 self.position_changed.emit(self.board.fen())
         self._clear_selection()
         self.update()
+
+    def set_free_move_mode(self, enabled: bool) -> None:
+        self.free_move_mode = enabled
+        self._clear_selection()
+        self.update()
+
+    def _free_move_click(self, square: chess.Square) -> None:
+        """Move the side-to-move piece to any square, ignoring normal piece geometry."""
+        piece = self.board.piece_at(square)
+        if self.selected is None:
+            if piece and piece.color == self.board.turn:
+                self.selected = square
+                self.targets = set(chess.SQUARES)
+                self.targets.discard(square)
+            self.update()
+            return
+
+        source = self.selected
+        moving = self.board.piece_at(source)
+        self._clear_selection()
+        if moving is None or source == square:
+            self.update()
+            return
+        # Keep both kings on the board; otherwise python-chess/Stockfish cannot
+        # represent a useful position. Capturing any other piece is allowed.
+        if piece and piece.piece_type == chess.KING:
+            self.update()
+            return
+        promotion = chess.QUEEN if moving.piece_type == chess.PAWN and chess.square_rank(square) in (0, 7) else None
+        move = chess.Move(source, square, promotion=promotion)
+        self.board.push(move)
+        self.best_move = None
+        self.position_changed.emit(self.board.fen())
+        self.update()
+
+    def play_best_move(self) -> bool:
+        if self.best_move is None or self.free_move_mode:
+            return False
+        move = self.best_move
+        if move not in self.board.legal_moves:
+            return False
+        self.board.push(move)
+        self._clear_selection()
+        self.best_move = None
+        self.position_changed.emit(self.board.fen())
+        self.update()
+        return True
 
     def _clear_selection(self) -> None:
         self.selected = None
