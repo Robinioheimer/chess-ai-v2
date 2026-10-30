@@ -6,7 +6,7 @@ import ctypes
 from ctypes import wintypes
 
 from PySide6.QtCore import Qt, QThread, Signal, QPoint, QRect
-from PySide6.QtGui import QPainter, QColor, QPen
+from PySide6.QtGui import QPainter, QColor, QPen, QCursor
 from PySide6.QtGui import QKeySequence
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
@@ -44,21 +44,26 @@ class RegionSelectionOverlay(QWidget):
 
     def mousePressEvent(self, event) -> None:
         if event.button() == Qt.MouseButton.LeftButton:
-            self.start = self.mapFromGlobal(event.globalPosition().toPoint())
+            # Mausposition direkt relativ zu genau diesem Monitor-Overlay.
+            self.start = event.position().toPoint()
             self.current = self.start
             self.update()
 
     def mouseMoveEvent(self, event) -> None:
         if self.start is not None:
-            self.current = self.mapFromGlobal(event.globalPosition().toPoint())
+            self.current = event.position().toPoint()
             self.update()
 
     def mouseReleaseEvent(self, event) -> None:
         if self.start is None:
             return
-        end = self.mapFromGlobal(event.globalPosition().toPoint())
+        end = event.position().toPoint()
         local = QRect(self.start, end).normalized()
-        global_rect = QRect(self.mapToGlobal(local.topLeft()), self.mapToGlobal(local.bottomRight())).normalized()
+        # Die globale Position ergibt sich aus dem Ursprung des Monitors plus
+        # der lokalen Auswahl. Keine Umrechnung über ein virtuelles Desktop-
+        # Overlay und keine zweite mapFromGlobal/mapToGlobal-Rundung.
+        origin = self.geometry().topLeft()
+        global_rect = QRect(origin + local.topLeft(), local.size())
         self.selection_done.emit(global_rect)
         self.close()
 
@@ -337,17 +342,16 @@ class MainWindow(QMainWindow):
         if sys.platform != "win32":
             self.status.setText("Bereichsauswahl benötigt Windows.")
             return
-        # Die Auswahl wird auf dem aktuell verwendeten Monitor gestartet.
-        # Qt liefert die Mausposition bereits in globalen logischen Bildschirmkoordinaten.
-        screens = QApplication.screens()
-        if not screens:
+        # Ein Overlay pro physischem Monitor vermeiden wir bewusst:
+        # ein einzelnes Fenster über virtualGeometry wird von Windows/Qt bei
+        # gemischter DPI-Skalierung häufig auf einen Teilbereich begrenzt.
+        # Stattdessen wählen wir den Monitor unter dem Mauszeiger.
+        screen = QApplication.screenAt(QCursor.pos()) or self.screen() or QApplication.primaryScreen()
+        if screen is None:
             self.status.setText("Kein Bildschirm für die Bereichsauswahl gefunden.")
             return
-        # Overlay über den gesamten virtuellen Desktop legen, damit auch ein
-        # Brett auf einem zweiten Monitor markiert werden kann.
-        virtual = QApplication.primaryScreen().virtualGeometry()
         self.hide()
-        self._selection_overlay = RegionSelectionOverlay(virtual)
+        self._selection_overlay = RegionSelectionOverlay(screen.geometry())
         self._selection_overlay.selection_done.connect(
             lambda rect: self.region_selected.emit(rect.x(), rect.y(), rect.width(), rect.height())
         )
