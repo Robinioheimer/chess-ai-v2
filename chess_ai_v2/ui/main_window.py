@@ -188,7 +188,7 @@ class MainWindow(QMainWindow):
         style = get_style(hwnd, GWL_EXSTYLE)
         if enabled:
             set_style(hwnd, GWL_EXSTYLE, style | WS_EX_LAYERED | WS_EX_TRANSPARENT)
-            ctypes.windll.user32.SetLayeredWindowAttributes(hwnd, 0, 255, 0x00000002)
+            ctypes.windll.user32.SetLayeredWindowAttributes(hwnd, 0, 150, 0x00000002)
             try:
                 from pynput import mouse
                 def on_click(x, y, button, pressed):
@@ -205,6 +205,7 @@ class MainWindow(QMainWindow):
                 self.pass_through.blockSignals(False)
                 self.status.setText(f"Mauseingabe konnte nicht gestartet werden: {exc}")
         else:
+            ctypes.windll.user32.SetLayeredWindowAttributes(hwnd, 0, 255, 0x00000002)
             set_style(hwnd, GWL_EXSTYLE, style & ~WS_EX_TRANSPARENT)
             if self._mouse_listener is not None:
                 self._mouse_listener.stop()
