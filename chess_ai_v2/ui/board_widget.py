@@ -230,7 +230,7 @@ class BoardWidget(QWidget):
                 rect = QRectF(x0 + col*cell, y0 + row*cell, cell, cell)
                 painter.fillRect(rect, light if (row + col) % 2 == 0 else dark)
                 if self.selected == square and alpha > 0:
-                    painter.fillRect(rect, QColor(246, 246, 105, round(150 * self.visual_opacity / 100)))
+                    painter.fillRect(rect, QColor(205, 209, 215, round(145 * self.visual_opacity / 100)))
                 if square in self.targets and alpha > 0:
                     painter.setBrush(QColor(20, 20, 20, round(85 * self.visual_opacity / 100)))
                     painter.setPen(Qt.PenStyle.NoPen)
@@ -251,7 +251,7 @@ class BoardWidget(QWidget):
                     margin = cell * 0.035
                     renderer.render(painter, rect.adjusted(margin, margin, -margin, -margin))
                     painter.restore()
-        palette = ["#56B4E9", "#E69F00", "#CC79A7"]
+        palette = ["#f2f3f5", "#aeb3bb", "#737982"]
         for index, (move, score) in enumerate(self.candidate_moves[:3]):
             color = QColor(palette[index])
             a = self._center(move.from_square, x0, y0, cell)
@@ -282,7 +282,7 @@ class BoardWidget(QWidget):
             label = score
             label_rect = QRectF(b.x() - cell*0.38, b.y() - cell*0.42 - index*cell*0.18, cell*0.76, cell*0.25)
             painter.setPen(Qt.PenStyle.NoPen)
-            painter.setBrush(QColor(20, 22, 26, 225))
+            painter.setBrush(QColor(16, 17, 19, 235))
             painter.drawRoundedRect(label_rect, cell*0.06, cell*0.06)
             painter.setPen(QPen(color, 1))
             painter.setFont(painter.font())
