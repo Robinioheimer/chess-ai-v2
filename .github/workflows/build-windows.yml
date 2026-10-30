@@ -38,8 +38,6 @@ jobs:
           --output-filename=ChessAIV2.exe
           --product-name="Chess AI V2"
           --file-description="Chess AI V2"
-          --file-version=${{ github.ref_name }}
-          --product-version=${{ github.ref_name }}
           --include-package=chess_ai_v2
           -m chess_ai_v2.app
 
