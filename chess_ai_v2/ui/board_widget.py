@@ -18,7 +18,7 @@ class BoardWidget(QWidget):
         self.selected: chess.Square | None = None
         self.targets: set[chess.Square] = set()
         self.best_move: chess.Move | None = None
-        self.candidate_moves: list[tuple[chess.Move, float]] = []
+        self.candidate_moves: list[tuple[chess.Move, str]] = []
         self.free_move_mode = False
         self.visual_opacity = 100
         self._piece_svg_cache: dict[str, QSvgRenderer] = {}
@@ -178,13 +178,13 @@ class BoardWidget(QWidget):
             self.best_move = None
         self.update()
 
-    def set_candidate_moves(self, candidates: list[tuple[str, float]]) -> None:
+    def set_candidate_moves(self, candidates: list[tuple[str, str]]) -> None:
         parsed = []
-        for uci, percent in candidates[:3]:
+        for uci, score in candidates[:3]:
             try:
                 move = chess.Move.from_uci(uci)
                 if move in self.board.legal_moves:
-                    parsed.append((move, float(percent)))
+                    parsed.append((move, str(score)))
             except (ValueError, TypeError):
                 continue
         self.candidate_moves = parsed
@@ -252,7 +252,7 @@ class BoardWidget(QWidget):
                     renderer.render(painter, rect.adjusted(margin, margin, -margin, -margin))
                     painter.restore()
         palette = ["#56B4E9", "#E69F00", "#CC79A7"]
-        for index, (move, percent) in enumerate(self.candidate_moves[:3]):
+        for index, (move, score) in enumerate(self.candidate_moves[:3]):
             color = QColor(palette[index])
             a = self._center(move.from_square, x0, y0, cell)
             b = self._center(move.to_square, x0, y0, cell)
@@ -279,7 +279,7 @@ class BoardWidget(QWidget):
             inset = cell * 0.025
             painter.drawPolygon(QPolygonF([tip, QPointF(left.x() + ux*inset, left.y() + uy*inset), QPointF(right.x() + ux*inset, right.y() + uy*inset)]))
             # Prozentlabel nahe dem Ziel, mit dunklem Hintergrund für Lesbarkeit.
-            label = f"{percent:.1f}%"
+            label = score
             label_rect = QRectF(b.x() - cell*0.38, b.y() - cell*0.42 - index*cell*0.18, cell*0.76, cell*0.25)
             painter.setPen(Qt.PenStyle.NoPen)
             painter.setBrush(QColor(20, 22, 26, 225))
