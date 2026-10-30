@@ -39,7 +39,7 @@ jobs:
           --product-name="Chess AI V2"
           --file-description="Chess AI V2"
           --include-package=chess_ai_v2
-          -m chess_ai_v2.app
+          chess_ai_v2/app.py
 
       - name: Publish release asset for version tags
         if: startsWith(github.ref, 'refs/tags/')
