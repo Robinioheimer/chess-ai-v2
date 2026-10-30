@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import sys
 import ctypes
+from ctypes import wintypes
 from PySide6.QtCore import Qt, QThread, Signal
 from PySide6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
@@ -199,8 +200,8 @@ class MainWindow(QMainWindow):
     def nativeEvent(self, event_type, message):
         if sys.platform == "win32":
             try:
-                msg = ctypes.cast(int(message), ctypes.POINTER(ctypes.c_long * 7)).contents
-                if msg[1] == 0x0312 and msg[2] == 1:  # WM_HOTKEY, our F8 id
+                msg = ctypes.cast(int(message), ctypes.POINTER(wintypes.MSG)).contents
+                if msg.message == 0x0312 and msg.wParam == 1:  # WM_HOTKEY, our F8 id
                     self.pass_through.setChecked(not self.pass_through.isChecked())
                     return True, 0
             except Exception:
