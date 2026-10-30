@@ -255,14 +255,6 @@ class MainWindow(QMainWindow):
                 if msg.message == 0x0312 and msg.wParam == self._hotkey_id:
                     self.pass_through.setChecked(not self.pass_through.isChecked())
                     return True, 0
-                if msg.message == 0x0084 and self._transparent_mode:  # WM_NCHITTEST
-                    x = ctypes.c_short(msg.lParam & 0xFFFF).value
-                    y = ctypes.c_short((msg.lParam >> 16) & 0xFFFF).value
-                    local = self.board.mapFromGlobal(QPoint(x, y))
-                    square = self.board.square_at(local)
-                    if square is not None and self.board.piece_at_visual_hit(local, square):
-                        return True, 1  # HTCLIENT: pieces still receive mouse input
-                    return True, -1  # HTTRANSPARENT: empty squares pass through
             except Exception:
                 pass
         return super().nativeEvent(event_type, message)
