@@ -148,6 +148,39 @@ class MainWindow(QMainWindow):
         root_layout.setContentsMargins(6, 6, 6, 6)
         root_layout.setSpacing(0)
 
+        workspace = QWidget()
+        workspace_layout = QHBoxLayout(workspace)
+        workspace_layout.setContentsMargins(0, 0, 0, 0)
+        workspace_layout.setSpacing(10)
+
+        self.sidebar = QWidget()
+        self.sidebar.setFixedWidth(142)
+        self.sidebar.setStyleSheet("QWidget { background: #202328; border-radius: 12px; }")
+        sidebar_layout = QVBoxLayout(self.sidebar)
+        sidebar_layout.setContentsMargins(8, 12, 8, 12)
+        sidebar_layout.setSpacing(7)
+        brand = QLabel("CHESS AI")
+        brand.setStyleSheet("font-size: 13px; font-weight: 800; color: #60aef2; padding: 5px;")
+        sidebar_layout.addWidget(brand)
+        self._category_buttons = []
+        for category, symbol in (
+            ("Alle", "⌂"), ("Engine", "⚙"), ("Analyse", "⌁"),
+            ("Spielfeld", "▦"), ("Training", "◎"), ("Steuerung", "⌨"),
+            ("Darstellung", "◐"), ("Allgemein", "⋯"),
+        ):
+            button = QPushButton(f"{symbol}   {category}")
+            button.setCheckable(True)
+            button.setChecked(category == "Alle")
+            button.setStyleSheet(
+                "QPushButton { text-align: left; padding: 10px 8px; border: 0; background: transparent; }"
+                "QPushButton:checked { background: #303943; color: #70baff; border-left: 3px solid #60aef2; }"
+            )
+            button.clicked.connect(lambda checked=False, name=category: self._select_category(name))
+            sidebar_layout.addWidget(button)
+            self._category_buttons.append(button)
+        sidebar_layout.addStretch(1)
+        workspace_layout.addWidget(self.sidebar)
+
         self.settings_scroll = QScrollArea()
         self.settings_scroll.setWidgetResizable(True)
         self.settings_scroll.setFrameShape(QScrollArea.Shape.NoFrame)
@@ -155,7 +188,8 @@ class MainWindow(QMainWindow):
         self.settings_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         self.settings_content = QWidget()
         self.settings_scroll.setWidget(self.settings_content)
-        root_layout.addWidget(self.settings_scroll, 1)
+        workspace_layout.addWidget(self.settings_scroll, 1)
+        root_layout.addWidget(workspace, 1)
         layout = QVBoxLayout(self.settings_content)
         layout.setContentsMargins(8, 8, 12, 8)
         layout.setSpacing(9)
@@ -338,20 +372,12 @@ class MainWindow(QMainWindow):
         search_row = QWidget()
         search_layout = QHBoxLayout(search_row)
         search_layout.setContentsMargins(0, 0, 0, 0)
+        search_layout.addStretch(1)
         search_layout.addWidget(self.search_button)
-        search_layout.addWidget(self.search_bar, 1)
+        self.search_bar.setMaximumWidth(560)
+        search_layout.addWidget(self.search_bar, 4)
+        search_layout.addStretch(1)
         layout.insertWidget(0, search_row)
-        self.category_bar = QWidget()
-        category_layout = QHBoxLayout(self.category_bar)
-        category_layout.setContentsMargins(0, 0, 0, 0)
-        for category in ("Alle", "Engine", "Analyse", "Spielfeld", "Training", "Steuerung", "Darstellung", "Allgemein"):
-            button = QPushButton(category)
-            button.setCheckable(True)
-            button.setChecked(category == "Alle")
-            button.clicked.connect(lambda checked=False, name=category: self._select_category(name))
-            category_layout.addWidget(button)
-        layout.insertWidget(1, self.category_bar)
-        self._category_buttons = self.category_bar.findChildren(QPushButton)
         self._filter_settings()
 
         self.board.position_changed.connect(self.engine_position.emit)
