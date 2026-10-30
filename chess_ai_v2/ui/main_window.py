@@ -4,11 +4,15 @@ import os
 import sys
 import ctypes
 from ctypes import wintypes
-from PySide6.QtCore import Qt, QThread, Signal
+
+from PySide6.QtCore import Qt, QThread, Signal, QPoint
+from PySide6.QtGui import QKeySequence
 from PySide6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
-    QSlider, QLineEdit, QSpinBox, QCheckBox, QFileDialog, QFrame
+    QSlider, QLineEdit, QSpinBox, QCheckBox, QFileDialog, QKeySequenceEdit,
+    QSizePolicy
 )
+
 from chess_ai_v2.ui.board_widget import BoardWidget
 from chess_ai_v2.engine.worker import EngineWorker
 
@@ -20,22 +24,26 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.setWindowTitle("Chess AI V2")
         self.setWindowFlags(Qt.WindowType.Window | Qt.WindowType.WindowStaysOnTopHint)
-        self.setMinimumSize(560, 760)
+        self.setMinimumSize(420, 520)
         self.resize(760, 980)
-        self.setWindowOpacity(0.96)
+        self._transparent_mode = False
+        self._hotkey_id = 41
+        self._hotkey_registered = False
+
         self.setStyleSheet("""
             QMainWindow, QWidget { background: #17191f; color: #e9ebf0; font-family: Segoe UI; }
             QPushButton { background: #292d36; border: 1px solid #3b414d; border-radius: 7px; padding: 7px 12px; }
             QPushButton:hover { background: #383e4a; }
-            QLineEdit, QSpinBox { background: #222630; border: 1px solid #3b414d; border-radius: 6px; padding: 6px; }
+            QLineEdit, QSpinBox, QKeySequenceEdit { background: #222630; border: 1px solid #3b414d; border-radius: 6px; padding: 6px; }
             QSlider::groove:horizontal { height: 5px; background: #424956; border-radius: 2px; }
             QSlider::handle:horizontal { background: #e5b93f; width: 13px; margin: -5px 0; border-radius: 6px; }
         """)
+
         root = QWidget()
         self.setCentralWidget(root)
         layout = QVBoxLayout(root)
-        layout.setContentsMargins(12, 12, 12, 12)
-        layout.setSpacing(9)
+        layout.setContentsMargins(10, 10, 10, 10)
+        layout.setSpacing(7)
 
         header = QHBoxLayout()
         title = QLabel("CHESS AI <b>V2</b>")
@@ -48,28 +56,28 @@ class MainWindow(QMainWindow):
         header.addWidget(self.status)
         layout.addLayout(header)
 
-        board_area = QWidget()
-        board_area_layout = QHBoxLayout(board_area)
-        board_area_layout.setContentsMargins(0, 0, 0, 0)
-        board_area_layout.addStretch()
+        self.board_area = QWidget()
+        self.board_area.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        board_layout = QHBoxLayout(self.board_area)
+        board_layout.setContentsMargins(0, 0, 0, 0)
+        board_layout.addStretch(1)
         self.board = BoardWidget()
-        self.board.setFixedSize(520, 520)
-        board_area_layout.addWidget(self.board, 0, Qt.AlignmentFlag.AlignCenter)
-        board_area_layout.addStretch()
-        layout.addWidget(board_area, 1)
+        self.board.setMinimumSize(160, 160)
+        self.board.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
+        board_layout.addWidget(self.board, 0, Qt.AlignmentFlag.AlignCenter)
+        board_layout.addStretch(1)
+        layout.addWidget(self.board_area, 1)
 
-        board_size_row = QHBoxLayout()
-        board_size_row.addWidget(QLabel("Brettgröße"))
+        size_row = QHBoxLayout()
+        size_row.addWidget(QLabel("Max. Brettgröße"))
         self.board_size_value = QLabel("520 px")
         self.board_size_slider = QSlider(Qt.Orientation.Horizontal)
-        self.board_size_slider.setRange(320, 680)
-        self.board_size_slider.setSingleStep(20)
-        self.board_size_slider.setPageStep(40)
+        self.board_size_slider.setRange(160, 1000)
         self.board_size_slider.setValue(520)
-        self.board_size_slider.valueChanged.connect(self._set_board_size)
-        board_size_row.addWidget(self.board_size_slider, 1)
-        board_size_row.addWidget(self.board_size_value)
-        layout.addLayout(board_size_row)
+        self.board_size_slider.valueChanged.connect(self._fit_board)
+        size_row.addWidget(self.board_size_slider, 1)
+        size_row.addWidget(self.board_size_value)
+        layout.addLayout(size_row)
 
         controls = QHBoxLayout()
         for label, callback in (("↶", self.board.undo), ("Reset", self.board.reset), ("Flip", self.board.flip)):
@@ -78,33 +86,41 @@ class MainWindow(QMainWindow):
             controls.addWidget(button)
         layout.addLayout(controls)
 
-        analysis = QHBoxLayout()
         self.best_label = QLabel("Bester Zug: –")
         self.best_label.setStyleSheet("font-size: 14px; font-weight: 600;")
-        analysis.addWidget(self.best_label)
-        layout.addLayout(analysis)
+        layout.addWidget(self.best_label)
         self.pv_label = QLabel("Warte auf Engine-Analyse …")
         self.pv_label.setWordWrap(True)
         self.pv_label.setStyleSheet("color: #aab1bd;")
         layout.addWidget(self.pv_label)
 
         opacity_row = QHBoxLayout()
-        opacity_row.addWidget(QLabel("Transparenz"))
-        self.opacity_value = QLabel("96 %")
+        opacity_row.addWidget(QLabel("Fenster-Deckkraft"))
+        self.opacity_value = QLabel("100 %")
         self.opacity_slider = QSlider(Qt.Orientation.Horizontal)
-        self.opacity_slider.setRange(0, 100)
-        self.opacity_slider.setValue(96)
+        self.opacity_slider.setRange(20, 100)
+        self.opacity_slider.setValue(100)
         self.opacity_slider.valueChanged.connect(self._set_opacity)
         opacity_row.addWidget(self.opacity_slider, 1)
         opacity_row.addWidget(self.opacity_value)
         layout.addLayout(opacity_row)
 
-        passthrough_row = QHBoxLayout()
-        self.pass_through = QCheckBox("Maus durchlassen (Brett nicht bedienbar)")
-        self.pass_through.toggled.connect(self._set_mouse_passthrough)
-        passthrough_row.addWidget(self.pass_through)
-        passthrough_row.addStretch()
-        layout.addLayout(passthrough_row)
+        mode_row = QHBoxLayout()
+        self.pass_through = QCheckBox("Transparenzmodus: durch leere Flächen klicken")
+        self.pass_through.toggled.connect(self._set_transparent_mode)
+        mode_row.addWidget(self.pass_through)
+        mode_row.addStretch()
+        layout.addLayout(mode_row)
+
+        hotkey_row = QHBoxLayout()
+        hotkey_row.addWidget(QLabel("Hotkey für Modus"))
+        self.hotkey_edit = QKeySequenceEdit(QKeySequence("F8"))
+        self.hotkey_edit.setMaximumWidth(170)
+        hotkey_row.addWidget(self.hotkey_edit)
+        self.hotkey_button = QPushButton("Hotkey übernehmen")
+        self.hotkey_button.clicked.connect(self._register_configured_hotkey)
+        hotkey_row.addWidget(self.hotkey_button)
+        layout.addLayout(hotkey_row)
 
         engine_row = QHBoxLayout()
         self.path_edit = QLineEdit(os.environ.get("STOCKFISH_PATH", ""))
@@ -124,62 +140,92 @@ class MainWindow(QMainWindow):
         layout.addLayout(engine_row)
 
         self.board.position_changed.connect(self.engine_position.emit)
-        self._hotkey_registered = False
-        if sys.platform == "win32":
-            # F8 remains available even while mouse input is passed through.
-            try:
-                self._hotkey_registered = bool(
-                    ctypes.windll.user32.RegisterHotKey(int(self.winId()), 1, 0, 0x77)
-                )
-            except Exception:
-                self._hotkey_registered = False
         self._thread: QThread | None = None
         self._worker: EngineWorker | None = None
+        self._register_configured_hotkey()
+
+    def resizeEvent(self, event) -> None:
+        super().resizeEvent(event)
+        self._fit_board()
+
+    def _fit_board(self, _value: int = 0) -> None:
+        if not hasattr(self, "board"):
+            return
+        area = self.board_area.contentsRect()
+        available = max(160, min(area.width(), area.height()))
+        size = min(self.board_size_slider.value(), available)
+        self.board.setFixedSize(size, size)
+        self.board_size_value.setText(f"{size} px")
 
     def _set_opacity(self, value: int) -> None:
-        self.setWindowOpacity(max(0.05, value / 100))
+        self.setWindowOpacity(value / 100)
         self.opacity_value.setText(f"{value} %")
 
-    def _set_board_size(self, value: int) -> None:
-        self.board.setFixedSize(value, value)
-        self.board_size_value.setText(f"{value} px")
-
-    def _set_mouse_passthrough(self, enabled: bool) -> None:
+    def _set_transparent_mode(self, enabled: bool) -> None:
+        self._transparent_mode = enabled
         if sys.platform != "win32":
-            self.status.setText("Maus-Durchlassen ist nur unter Windows verfügbar")
+            self.status.setText("Der Klick-durch-Modus benötigt Windows.")
             self.pass_through.blockSignals(True)
             self.pass_through.setChecked(False)
             self.pass_through.blockSignals(False)
+            self._transparent_mode = False
             return
-        try:
-            hwnd = int(self.winId())
-            user32 = ctypes.windll.user32
-            get_style = getattr(user32, "GetWindowLongPtrW", user32.GetWindowLongW)
-            set_style = getattr(user32, "SetWindowLongPtrW", user32.SetWindowLongW)
-            get_style.restype = ctypes.c_longlong
-            get_style.argtypes = [ctypes.c_void_p, ctypes.c_int]
-            set_style.restype = ctypes.c_longlong
-            set_style.argtypes = [ctypes.c_void_p, ctypes.c_int, ctypes.c_longlong]
-            ex_style = get_style(hwnd, -20)  # GWL_EXSTYLE
-            WS_EX_TRANSPARENT = 0x00000020
-            if enabled:
-                ex_style |= WS_EX_TRANSPARENT
-                self.status.setText("Maus wird an das Fenster dahinter weitergegeben")
-            else:
-                ex_style &= ~WS_EX_TRANSPARENT
-                self.status.setText("Brett wieder interaktiv")
-            set_style(hwnd, -20, ex_style)
-            user32.SetWindowPos(hwnd, 0, 0, 0, 0, 0, 0x0027)
-        except Exception as exc:
-            self.status.setText(f"Windows-Mausmodus fehlgeschlagen: {exc}")
-            self.pass_through.blockSignals(True)
-            self.pass_through.setChecked(False)
-            self.pass_through.blockSignals(False)
+        self.status.setText(
+            "Modus AN: leere Felder lassen Klicks durch; Figuren bleiben greifbar"
+            if enabled else "Modus AUS: das ganze Brett ist bedienbar"
+        )
+        self.winId()
+
+    def _register_configured_hotkey(self) -> None:
+        if sys.platform != "win32":
+            self.status.setText("Globale Hotkeys sind nur unter Windows verfügbar.")
+            return
+        sequence = self.hotkey_edit.keySequence()
+        if sequence.isEmpty() or sequence.count() != 1:
+            self.status.setText("Bitte genau eine Tastenkombination festlegen.")
+            return
+        key = int(sequence[0])
+        modifiers = 0
+        if key & int(Qt.KeyboardModifier.AltModifier):
+            modifiers |= 0x0001
+        if key & int(Qt.KeyboardModifier.ControlModifier):
+            modifiers |= 0x0002
+        if key & int(Qt.KeyboardModifier.ShiftModifier):
+            modifiers |= 0x0004
+        if key & int(Qt.KeyboardModifier.MetaModifier):
+            modifiers |= 0x0008
+        vk = key & 0x01FFFFFF
+        if self._hotkey_registered:
+            ctypes.windll.user32.UnregisterHotKey(int(self.winId()), self._hotkey_id)
+            self._hotkey_registered = False
+        if ctypes.windll.user32.RegisterHotKey(int(self.winId()), self._hotkey_id, modifiers, vk):
+            self._hotkey_registered = True
+            self.status.setText("Hotkey gesetzt: " + sequence.toString(QKeySequence.SequenceFormat.NativeText))
+        else:
+            self.status.setText("Hotkey belegt oder ungültig – bitte eine andere Kombination wählen.")
+
+    def nativeEvent(self, event_type, message):
+        if sys.platform == "win32":
+            try:
+                msg = ctypes.cast(int(message), ctypes.POINTER(wintypes.MSG)).contents
+                if msg.message == 0x0312 and msg.wParam == self._hotkey_id:
+                    self.pass_through.setChecked(not self.pass_through.isChecked())
+                    return True, 0
+                if msg.message == 0x0084 and self._transparent_mode:  # WM_NCHITTEST
+                    x = ctypes.c_short(msg.lParam & 0xFFFF).value
+                    y = ctypes.c_short((msg.lParam >> 16) & 0xFFFF).value
+                    local = self.board.mapFromGlobal(QPoint(x, y))
+                    square = self.board.square_at(local)
+                    if square is not None and self.board.piece_at_visual_hit(local, square):
+                        return True, 1  # HTCLIENT: pieces still receive mouse input
+                    return True, -1  # HTTRANSPARENT: empty squares pass through
+            except Exception:
+                pass
+        return super().nativeEvent(event_type, message)
 
     def _browse_stockfish(self) -> None:
         path, _ = QFileDialog.getOpenFileName(
-            self,
-            "Stockfish-Programm auswählen",
+            self, "Stockfish-Programm auswählen",
             os.path.dirname(self.path_edit.text().strip()) or os.path.expanduser("~"),
             "Stockfish (stockfish.exe);;Programme (*.exe);;Alle Dateien (*)",
         )
@@ -210,20 +256,9 @@ class MainWindow(QMainWindow):
         self.best_label.setText(f"Bester Zug: {san}  ·  Bewertung: {score}")
         self.pv_label.setText(f"Variantenfolge: {pv}")
 
-    def nativeEvent(self, event_type, message):
-        if sys.platform == "win32":
-            try:
-                msg = ctypes.cast(int(message), ctypes.POINTER(wintypes.MSG)).contents
-                if msg.message == 0x0312 and msg.wParam == 1:  # WM_HOTKEY, our F8 id
-                    self.pass_through.setChecked(not self.pass_through.isChecked())
-                    return True, 0
-            except Exception:
-                pass
-        return super().nativeEvent(event_type, message)
-
     def closeEvent(self, event) -> None:
         if self._hotkey_registered and sys.platform == "win32":
-            ctypes.windll.user32.UnregisterHotKey(int(self.winId()), 1)
+            ctypes.windll.user32.UnregisterHotKey(int(self.winId()), self._hotkey_id)
         if self._worker is not None:
             self._worker.stop()
         if self._thread is not None:
