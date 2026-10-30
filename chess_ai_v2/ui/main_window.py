@@ -184,7 +184,8 @@ class MainWindow(QMainWindow):
         if sequence.isEmpty() or sequence.count() != 1:
             self.status.setText("Bitte genau eine Tastenkombination festlegen.")
             return
-        key = int(sequence[0])
+        # In Qt 6, QKeySequence[i] returns QKeyCombination, not an int.
+        key = int(sequence[0].toCombined())
         modifiers = 0
         if key & int(Qt.KeyboardModifier.AltModifier):
             modifiers |= 0x0001
