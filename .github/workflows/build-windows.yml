@@ -1,0 +1,59 @@
+name: Build Windows EXE
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install application and build tools
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install ".[build]"
+
+      - name: Build standalone executable
+        run: >
+          python -m nuitka
+          --onefile
+          --enable-plugin=pyside6
+          --windows-console-mode=disable
+          --assume-yes-for-downloads
+          --output-dir=dist
+          --output-filename=ChessAIV2.exe
+          --product-name="Chess AI V2"
+          --file-description="Chess AI V2"
+          --file-version=${{ github.ref_name }}
+          --product-version=${{ github.ref_name }}
+          --include-package=chess_ai_v2
+          -m chess_ai_v2.app
+
+      - name: Publish release asset for version tags
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: dist/ChessAIV2.exe
+
+      - name: Upload build artifact
+        if: "!startsWith(github.ref, 'refs/tags/')"
+        uses: actions/upload-artifact@v4
+        with:
+          name: ChessAIV2-Windows
+          path: dist/ChessAIV2.exe
+          if-no-files-found: error
