@@ -95,8 +95,10 @@ class MainWindow(QMainWindow):
         self._transparent_mode = False
         self._hotkey_id = 41
         self._best_move_hotkey_id = 42
+        self._popup_hotkey_id = 43
         self._hotkey_registered = False
         self._best_move_hotkey_registered = False
+        self._popup_hotkey_registered = False
         self._mouse_listener = None
         self._selection_listener = None
         self._selection_overlay = None
@@ -270,6 +272,7 @@ class MainWindow(QMainWindow):
         self._worker: EngineWorker | None = None
         self._register_configured_hotkey()
         self._register_best_move_hotkey()
+        self._register_popup_hotkey()
 
     def resizeEvent(self, event) -> None:
         super().resizeEvent(event)
@@ -447,6 +450,16 @@ class MainWindow(QMainWindow):
         else:
             self.status.setText("Hotkey für besten Zug ist belegt oder ungültig.")
 
+
+    def _register_popup_hotkey(self) -> None:
+        if sys.platform != "win32":
+            return
+        if ctypes.windll.user32.RegisterHotKey(int(self.winId()), self._popup_hotkey_id, 0, 0x76):  # F7
+            self._popup_hotkey_registered = True
+        else:
+            self._popup_hotkey_registered = False
+            self.status.setText("F7 ist bereits belegt; Popup weiterhin über die Einstellungen steuerbar.")
+
     def _execute_best_move(self) -> None:
         if self.board.play_best_move():
             self.status.setText("Bester Zug wurde auf dem Overlay-Brett ausgeführt.")
@@ -497,6 +510,9 @@ class MainWindow(QMainWindow):
                 if msg.message == 0x0312 and msg.wParam == self._best_move_hotkey_id:
                     self._execute_best_move()
                     return True, 0
+                if msg.message == 0x0312 and msg.wParam == self._popup_hotkey_id:
+                    self._toggle_board_visibility()
+                    return True, 0
             except Exception:
                 pass
         return super().nativeEvent(event_type, message)
@@ -544,6 +560,8 @@ class MainWindow(QMainWindow):
                 ctypes.windll.user32.UnregisterHotKey(int(self.winId()), self._hotkey_id)
             if self._best_move_hotkey_registered:
                 ctypes.windll.user32.UnregisterHotKey(int(self.winId()), self._best_move_hotkey_id)
+            if self._popup_hotkey_registered:
+                ctypes.windll.user32.UnregisterHotKey(int(self.winId()), self._popup_hotkey_id)
         if hasattr(self, "board_popup"):
             self.board_popup.close()
         if self._worker is not None:
