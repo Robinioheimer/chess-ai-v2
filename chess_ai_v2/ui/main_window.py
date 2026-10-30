@@ -135,33 +135,9 @@ class MainWindow(QMainWindow):
         root.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
         root.setStyleSheet("background: transparent;")
         self.setCentralWidget(root)
-        root_layout = QHBoxLayout(root)
-        root_layout.setContentsMargins(0, 0, 0, 0)
+        root_layout = QVBoxLayout(root)
+        root_layout.setContentsMargins(6, 6, 6, 6)
         root_layout.setSpacing(0)
-
-        # Schmale Navigationsleiste im Stil des Referenzbildes.
-        self.sidebar = QWidget()
-        self.sidebar.setObjectName("sidebar")
-        self.sidebar.setFixedWidth(76)
-        self.sidebar.setStyleSheet("#sidebar { background: #25282d; }")
-        side_layout = QVBoxLayout(self.sidebar)
-        side_layout.setContentsMargins(10, 18, 10, 18)
-        side_layout.setSpacing(12)
-        self.nav_buttons = []
-        for symbol, tooltip in (("⌖", "Allgemein"), ("♙", "Spielfeld"), ("◉", "Darstellung"), ("⋯", "Trainingsmodus"), ("☷", "Hotkeys"), ("⚙", "Engine")):
-            nav = QPushButton(symbol)
-            nav.setToolTip(tooltip)
-            nav.setFixedSize(54, 54)
-            nav.setStyleSheet("""
-                QPushButton { background: transparent; border: 0; border-radius: 27px; color: #d8dde5; font-size: 23px; padding: 0; }
-                QPushButton:hover { background: #353b44; }
-                QPushButton:checked { background: #60aef2; color: #10202e; }
-            """)
-            nav.setCheckable(True)
-            side_layout.addWidget(nav)
-            self.nav_buttons.append(nav)
-        side_layout.addStretch(1)
-        root_layout.addWidget(self.sidebar)
 
         self.settings_scroll = QScrollArea()
         self.settings_scroll.setWidgetResizable(True)
@@ -317,16 +293,6 @@ class MainWindow(QMainWindow):
         self.region_button.clicked.connect(self._start_region_selection)
         layout.addWidget(self.region_button)
 
-        # Navigation springt direkt zum passenden Abschnitt in der Scrollliste.
-        nav_targets = (
-            self.header_widget, self.board_toggle_button, self.opacity_row_widget,
-            self.mode_row_widget, self.hotkey_row_widget, self.engine_row_widget,
-        )
-        for index, (nav, target) in enumerate(zip(self.nav_buttons, nav_targets)):
-            nav.clicked.connect(lambda checked=False, t=target, n=nav: self._navigate_to(t, n))
-            if index == 0:
-                nav.setChecked(True)
-
         self.board.position_changed.connect(self.engine_position.emit)
         self._thread: QThread | None = None
         self._worker: EngineWorker | None = None
@@ -348,17 +314,12 @@ class MainWindow(QMainWindow):
         else:
             self.resize(560, 680)
 
-    def _navigate_to(self, target: QWidget, button: QPushButton) -> None:
-        for nav in self.nav_buttons:
-            nav.setChecked(nav is button)
-        self.settings_scroll.ensureWidgetVisible(target, 0, 18)
-
     def resizeEvent(self, event) -> None:
         super().resizeEvent(event)
         self._fit_board()
 
     def _fit_board(self, _value: int = 0) -> None:
-        if not hasattr(self, "board"):
+        if not all(hasattr(self, name) for name in ("board", "board_area", "board_size_slider", "board_size_value")):
             return
         area = self.board_area.contentsRect()
         available = max(80, min(area.width(), area.height()))
@@ -374,7 +335,9 @@ class MainWindow(QMainWindow):
         if sys.platform != "win32":
             self.status.setText("Bereichsauswahl benötigt Windows.")
             return
-        screen = self.screen()
+        # Die Auswahl wird auf dem aktuell verwendeten Monitor gestartet.
+        # Qt liefert die Mausposition bereits in globalen logischen Bildschirmkoordinaten.
+        screen = QApplication.screenAt(self.frameGeometry().center()) or self.screen()
         if screen is None:
             self.status.setText("Kein Bildschirm für die Bereichsauswahl gefunden.")
             return
@@ -390,22 +353,23 @@ class MainWindow(QMainWindow):
             self.show()
             self.status.setText("Bitte möglichst genau das quadratische Schachbrett markieren.")
             return
-        # RegionSelectionOverlay reports Qt global logical coordinates.
-        # Keep those coordinates in the same Qt coordinate system; do not
-        # multiply/divide by monitor DPI (that caused scaling and offsets).
+        # Auswahlrechteck und QWidget-Geometrie verwenden beide Qt-logische
+        # globale Koordinaten. Keine DPI-Multiplikation durchführen.
         selected = QRect(x, y, width, height)
         size = min(selected.width(), selected.height())
+        if size < 80:
+            self.show()
+            self.status.setText("Der ausgewählte Bereich ist zu klein.")
+            return
 
-        # A chessboard must be square. Fit the largest square centered inside
-        # the selection, never larger than the selected area.
+        # Das Brett wird exakt in der Mitte des markierten Bereichs platziert.
         left = selected.x() + (selected.width() - size) // 2
         top = selected.y() + (selected.height() - size) // 2
         rect = QRect(left, top, size, size)
         self._calibrated_region = rect
 
-        target_screen = QApplication.screenAt(rect.center())
-        if target_screen is not None and self.board_popup.windowHandle() is not None:
-            self.board_popup.windowHandle().setScreen(target_screen)
+        # Erst die Zielgeometrie setzen, dann das rahmenlose Fenster anzeigen.
+        self.board_popup.hide()
         self.board_popup.setGeometry(rect)
         self.board.setMinimumSize(80, 80)
         self.board.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
