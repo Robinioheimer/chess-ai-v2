@@ -114,20 +114,55 @@ class MainWindow(QMainWindow):
         self.region_selected.connect(self._apply_selected_region)
 
         self.setStyleSheet("""
-            QMainWindow, QWidget { background: #17191f; color: #e9ebf0; font-family: Segoe UI; }
-            QPushButton { background: #292d36; border: 1px solid #3b414d; border-radius: 7px; padding: 7px 12px; }
-            QPushButton:hover { background: #383e4a; }
-            QLineEdit, QSpinBox, QKeySequenceEdit { background: #222630; border: 1px solid #3b414d; border-radius: 6px; padding: 6px; }
-            QSlider::groove:horizontal { height: 5px; background: #424956; border-radius: 2px; }
-            QSlider::handle:horizontal { background: #e5b93f; width: 13px; margin: -5px 0; border-radius: 6px; }
+            QMainWindow, QWidget { background: #17191b; color: #e9edf3; font-family: Segoe UI; font-size: 10pt; }
+            QScrollArea, QScrollArea > QWidget > QWidget { background: #17191b; border: 0; }
+            QLabel { color: #e3e6eb; }
+            QPushButton { background: #292c31; color: #edf0f5; border: 1px solid #383c43; border-radius: 9px; padding: 9px 14px; }
+            QPushButton:hover { background: #373c44; border-color: #4b535f; }
+            QPushButton:pressed { background: #202329; }
+            QLineEdit, QSpinBox, QKeySequenceEdit { background: #25282d; color: #f1f3f6; border: 1px solid #393e46; border-radius: 10px; padding: 8px 10px; selection-background-color: #60aef2; }
+            QCheckBox { spacing: 10px; }
+            QCheckBox::indicator { width: 19px; height: 19px; border-radius: 5px; border: 2px solid #41464e; background: #202328; }
+            QCheckBox::indicator:checked { background: #60aef2; border-color: #60aef2; }
+            QSlider::groove:horizontal { height: 6px; background: #343940; border-radius: 3px; }
+            QSlider::handle:horizontal { background: #60aef2; width: 16px; margin: -6px 0; border-radius: 8px; }
+            QScrollBar:vertical { background: #17191b; width: 10px; margin: 3px; }
+            QScrollBar::handle:vertical { background: #41464e; border-radius: 5px; min-height: 35px; }
+            QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0; }
         """)
 
         root = QWidget()
         root.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
         root.setStyleSheet("background: transparent;")
         self.setCentralWidget(root)
-        root_layout = QVBoxLayout(root)
-        root_layout.setContentsMargins(6, 6, 6, 6)
+        root_layout = QHBoxLayout(root)
+        root_layout.setContentsMargins(0, 0, 0, 0)
+        root_layout.setSpacing(0)
+
+        # Schmale Navigationsleiste im Stil des Referenzbildes.
+        self.sidebar = QWidget()
+        self.sidebar.setObjectName("sidebar")
+        self.sidebar.setFixedWidth(76)
+        self.sidebar.setStyleSheet("#sidebar { background: #25282d; }")
+        side_layout = QVBoxLayout(self.sidebar)
+        side_layout.setContentsMargins(10, 18, 10, 18)
+        side_layout.setSpacing(12)
+        self.nav_buttons = []
+        for symbol, tooltip in (("⌖", "Allgemein"), ("♙", "Spielfeld"), ("◉", "Darstellung"), ("⋯", "Trainingsmodus"), ("☷", "Hotkeys"), ("⚙", "Engine")):
+            nav = QPushButton(symbol)
+            nav.setToolTip(tooltip)
+            nav.setFixedSize(54, 54)
+            nav.setStyleSheet("""
+                QPushButton { background: transparent; border: 0; border-radius: 27px; color: #d8dde5; font-size: 23px; padding: 0; }
+                QPushButton:hover { background: #353b44; }
+                QPushButton:checked { background: #60aef2; color: #10202e; }
+            """)
+            nav.setCheckable(True)
+            side_layout.addWidget(nav)
+            self.nav_buttons.append(nav)
+        side_layout.addStretch(1)
+        root_layout.addWidget(self.sidebar)
+
         self.settings_scroll = QScrollArea()
         self.settings_scroll.setWidgetResizable(True)
         self.settings_scroll.setFrameShape(QScrollArea.Shape.NoFrame)
@@ -135,7 +170,7 @@ class MainWindow(QMainWindow):
         self.settings_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         self.settings_content = QWidget()
         self.settings_scroll.setWidget(self.settings_content)
-        root_layout.addWidget(self.settings_scroll)
+        root_layout.addWidget(self.settings_scroll, 1)
         layout = QVBoxLayout(self.settings_content)
         layout.setContentsMargins(8, 8, 12, 8)
         layout.setSpacing(9)
@@ -282,6 +317,16 @@ class MainWindow(QMainWindow):
         self.region_button.clicked.connect(self._start_region_selection)
         layout.addWidget(self.region_button)
 
+        # Navigation springt direkt zum passenden Abschnitt in der Scrollliste.
+        nav_targets = (
+            self.header_widget, self.board_toggle_button, self.opacity_row_widget,
+            self.mode_row_widget, self.hotkey_row_widget, self.engine_row_widget,
+        )
+        for index, (nav, target) in enumerate(zip(self.nav_buttons, nav_targets)):
+            nav.clicked.connect(lambda checked=False, t=target, n=nav: self._navigate_to(t, n))
+            if index == 0:
+                nav.setChecked(True)
+
         self.board.position_changed.connect(self.engine_position.emit)
         self._thread: QThread | None = None
         self._worker: EngineWorker | None = None
@@ -302,6 +347,11 @@ class MainWindow(QMainWindow):
             )
         else:
             self.resize(560, 680)
+
+    def _navigate_to(self, target: QWidget, button: QPushButton) -> None:
+        for nav in self.nav_buttons:
+            nav.setChecked(nav is button)
+        self.settings_scroll.ensureWidgetVisible(target, 0, 18)
 
     def resizeEvent(self, event) -> None:
         super().resizeEvent(event)
