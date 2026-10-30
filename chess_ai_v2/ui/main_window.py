@@ -7,13 +7,13 @@ import json
 import shutil
 from ctypes import wintypes
 
-from PySide6.QtCore import Qt, QThread, Signal, QPoint, QRect
+from PySide6.QtCore import Qt, QThread, Signal, QPoint, QRect, QSettings
 from PySide6.QtGui import QPainter, QColor, QPen, QCursor
 from PySide6.QtGui import QKeySequence
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QSlider, QLineEdit, QSpinBox, QCheckBox, QFileDialog, QKeySequenceEdit,
-    QSizePolicy, QScrollArea, QSettings, QInputDialog
+    QSizePolicy, QScrollArea, QInputDialog
 )
 
 from chess_ai_v2.ui.board_widget import BoardWidget
@@ -393,8 +393,8 @@ class MainWindow(QMainWindow):
                 button.setChecked(button.text() == "Alle")
         for category, widget in self._setting_widgets:
             searchable = category + " " + " ".join(
-                child.text() for child in widget.findChildren((QLabel, QPushButton, QCheckBox, QLineEdit))
-                if hasattr(child, "text")
+                child.text() for child in widget.findChildren(QWidget)
+                if isinstance(child, (QLabel, QPushButton, QCheckBox, QLineEdit))
             )
             matches_text = not query or query in searchable.casefold()
             matches_category = self._active_category == "Alle" or category == self._active_category
