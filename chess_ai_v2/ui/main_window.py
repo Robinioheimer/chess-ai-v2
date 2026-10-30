@@ -63,6 +63,34 @@ class RegionSelectionOverlay(QWidget):
         self.close()
 
 
+class BoardPopup(QMainWindow):
+    def __init__(self, board: BoardWidget, parent=None) -> None:
+        super().__init__(parent)
+        self.setWindowTitle("Chess AI V2 – Schachbrett")
+        self.setWindowFlags(Qt.WindowType.Window | Qt.WindowType.WindowStaysOnTopHint)
+        self.resize(620, 700)
+        root = QWidget()
+        self.setCentralWidget(root)
+        layout = QVBoxLayout(root)
+        layout.setContentsMargins(10, 10, 10, 10)
+        toolbar = QHBoxLayout()
+        for label, callback in (("↶ Zurück", board.undo), ("Reset", board.reset), ("Flip", board.flip)):
+            button = QPushButton(label)
+            button.clicked.connect(callback)
+            toolbar.addWidget(button)
+        layout.addLayout(toolbar)
+        self.best_label = QLabel("Bester Zug: –")
+        layout.addWidget(self.best_label)
+        self.pv_label = QLabel("Warte auf Engine-Analyse …")
+        self.pv_label.setWordWrap(True)
+        layout.addWidget(self.pv_label)
+        board.setParent(root)
+        board.setMinimumSize(160, 160)
+        board.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        layout.addWidget(board, 1)
+        self.board = board
+
+
 class MainWindow(QMainWindow):
     engine_position = Signal(str)
     mirrored_click = Signal(int, int, bool)
@@ -141,6 +169,7 @@ class MainWindow(QMainWindow):
         board_layout.addStretch(1)
         layout.addWidget(self.board_area)
         self.board_area.hide()
+        self.board_popup = BoardPopup(self.board, self)
         self.board_toggle_button = QPushButton("Spielfeld anzeigen")
         self.board_toggle_button.clicked.connect(self._toggle_board_visibility)
         layout.addWidget(self.board_toggle_button)
@@ -172,14 +201,9 @@ class MainWindow(QMainWindow):
             button.clicked.connect(callback)
             controls.addWidget(button)
         layout.addWidget(self.controls_widget)
-
-        self.best_label = QLabel("Bester Zug: –")
-        self.best_label.setStyleSheet("font-size: 14px; font-weight: 600;")
-        layout.addWidget(self.best_label)
-        self.pv_label = QLabel("Warte auf Engine-Analyse …")
-        self.pv_label.setWordWrap(True)
-        self.pv_label.setStyleSheet("color: #aab1bd;")
-        layout.addWidget(self.pv_label)
+        self.controls_widget.hide()
+        self.best_label = self.board_popup.best_label
+        self.pv_label = self.board_popup.pv_label
 
         opacity_row = QHBoxLayout()
         opacity_row.addWidget(QLabel("Brett-Sichtbarkeit"))
@@ -298,22 +322,27 @@ class MainWindow(QMainWindow):
         rect = QRect(round(x/dpr), round(y/dpr), round(width/dpr), round(height/dpr))
         self._calibrated_region = rect
         # Keep the settings available in the scrollable panel after calibration.
-        self.board_area.setContentsMargins(0, 0, 0, 0)
-        self.board_area.show()
-        self.board_toggle_button.setText("Spielfeld ausblenden")
+        size = min(rect.width(), rect.height())
+        self.board_popup.setGeometry(rect.x(), rect.y(), size, size + 110)
         self.board.setMinimumSize(80, 80)
         self.board.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
-        self.board_area.setMinimumHeight(rect.height())
-        self.board.setFixedSize(min(rect.width(), rect.height()), min(rect.width(), rect.height()))
-        self._fit_board()
+        self.board_popup.show()
+        self.board_popup.raise_()
+        self.board_popup.activateWindow()
+        self.board_toggle_button.setText("Spielfeld ausblenden")
         self.show()
         self.raise_()
-        self.status.setText("Bereich übernommen. Das Brett ist sichtbar; weitere Einstellungen findest du im Scrollmenü.")
+        self.status.setText("Bereich übernommen. Das Schachbrett wurde in einem eigenen Fenster geöffnet.")
 
     def _toggle_board_visibility(self) -> None:
-        visible = not self.board_area.isVisible()
-        self.board_area.setVisible(visible)
-        self.board_toggle_button.setText("Spielfeld ausblenden" if visible else "Spielfeld anzeigen")
+        if self.board_popup.isVisible():
+            self.board_popup.hide()
+            self.board_toggle_button.setText("Spielfeld anzeigen")
+        else:
+            self.board_popup.show()
+            self.board_popup.raise_()
+            self.board_popup.activateWindow()
+            self.board_toggle_button.setText("Spielfeld ausblenden")
 
     def _set_opacity(self, value: int) -> None:
         self.board.set_visual_opacity(value)
@@ -527,6 +556,8 @@ class MainWindow(QMainWindow):
                 ctypes.windll.user32.UnregisterHotKey(int(self.winId()), self._hotkey_id)
             if self._best_move_hotkey_registered:
                 ctypes.windll.user32.UnregisterHotKey(int(self.winId()), self._best_move_hotkey_id)
+        if hasattr(self, "board_popup"):
+            self.board_popup.close()
         if self._worker is not None:
             self._worker.stop()
         if self._thread is not None:
