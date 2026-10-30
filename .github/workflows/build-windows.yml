@@ -38,6 +38,8 @@ jobs:
           --output-filename=ChessAIV2.exe
           --product-name="Chess AI V2"
           --file-description="Chess AI V2"
+          --product-version=0.1.0
+          --file-version=0.1.0
           --include-package=chess_ai_v2
           chess_ai_v2/app.py
 
