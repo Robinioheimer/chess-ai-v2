@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import os
+import json
+import math
 from pathlib import Path
 from PySide6.QtCore import QObject, Signal, Slot
 import chess
@@ -9,13 +11,15 @@ import chess.engine
 
 class EngineWorker(QObject):
     best_move = Signal(str, str, str)  # UCI move, score text, principal variation
+    candidate_moves = Signal(str)  # JSON list: UCI, evaluation percentage, PV
     status = Signal(str)
     failed = Signal(str)
 
-    def __init__(self, executable: str, depth: int = 15) -> None:
+    def __init__(self, executable: str, depth: int = 15, multipv: int = 3) -> None:
         super().__init__()
         self.executable = executable
         self.depth = max(1, min(depth, 30))
+        self.multipv = max(1, min(int(multipv), 3))
         self._engine: chess.engine.SimpleEngine | None = None
         self._board = chess.Board()
         self._running = False
@@ -51,15 +55,38 @@ class EngineWorker(QObject):
         if not self._running or self._engine is None or self._board.is_game_over():
             return
         try:
-            info = self._engine.analyse(self._board, chess.engine.Limit(depth=self.depth))
-            pv = info.get("pv", [])
-            if not pv:
+            infos = self._engine.analyse(
+                self._board,
+                chess.engine.Limit(depth=self.depth),
+                multipv=self.multipv,
+            )
+            if isinstance(infos, dict):
+                infos = [infos]
+            results = []
+            for info in infos[:self.multipv]:
+                pv = info.get("pv", [])
+                if not pv:
+                    continue
+                score = info.get("score")
+                pov_score = score.pov(self._board.turn) if score else chess.engine.Score(0)
+                cp = pov_score.score(mate_score=10000)
+                # Näherungsweise Gewinnchance aus der Engine-Bewertung.
+                # Das ist keine nachträgliche Zuggenauigkeit wie bei Chess.com.
+                if pov_score.is_mate():
+                    probability = 99.9 if (pov_score.mate() or 0) > 0 else 0.1
+                else:
+                    probability = 100.0 / (1.0 + math.exp(-max(-1200, min(1200, cp or 0)) / 400.0))
+                results.append({
+                    "uci": pv[0].uci(),
+                    "percent": round(probability, 1),
+                    "score": str(cp if cp is not None else 0),
+                    "pv": " ".join(self._board.variation_san(pv[:8])),
+                })
+            if not results:
                 return
-            move = pv[0]
-            score = info.get("score")
-            score_text = score.pov(self._board.turn).score(mate_score=100000) if score else 0
-            pv_text = " ".join(self._board.variation_san(pv[:8]))
-            self.best_move.emit(move.uci(), str(score_text), pv_text)
+            self.candidate_moves.emit(json.dumps(results))
+            first = results[0]
+            self.best_move.emit(first["uci"], first["score"], first["pv"])
         except Exception as exc:
             self.failed.emit(str(exc))
 
