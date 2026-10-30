@@ -79,7 +79,7 @@ class EngineWorker(QObject):
                 # Perspektive bleibt die Seite, die in dieser Stellung am Zug ist.
                 if pov_score.is_mate():
                     mate = pov_score.mate()
-                    score_text = f"#{mate}" if mate is not None and mate > 0 else f"-#{abs(mate or 0)}"
+                    score_text = f"Matt in {mate}" if mate is not None and mate > 0 else f"-Matt in {abs(mate or 0)}"
                 else:
                     # Glatte Prozent-Schaetzung aus der Centipawn-Bewertung.
                     # Anders als WDL-Rundungen springt sie bei normalen
