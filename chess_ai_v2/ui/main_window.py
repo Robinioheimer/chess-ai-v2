@@ -90,8 +90,9 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.setWindowTitle("Chess AI V2")
         self.setWindowFlags(Qt.WindowType.Window | Qt.WindowType.WindowStaysOnTopHint)
-        self.setMinimumSize(420, 520)
-        self.resize(760, 980)
+        # The settings window adapts to the actual usable monitor area.
+        # Its contents remain inside the scroll area, even on short displays.
+        self.setMinimumSize(340, 280)
         self._transparent_mode = False
         self._hotkey_id = 41
         self._best_move_hotkey_id = 42
@@ -274,6 +275,19 @@ class MainWindow(QMainWindow):
         self._register_best_move_hotkey()
         self._register_popup_hotkey()
 
+        screen = self.screen()
+        if screen is not None:
+            available = screen.availableGeometry()
+            width = min(620, max(340, available.width() - 32))
+            height = min(760, max(280, available.height() - 32))
+            self.resize(width, height)
+            self.move(
+                available.x() + (available.width() - width) // 2,
+                available.y() + (available.height() - height) // 2,
+            )
+        else:
+            self.resize(560, 680)
+
     def resizeEvent(self, event) -> None:
         super().resizeEvent(event)
         self._fit_board()
@@ -311,11 +325,23 @@ class MainWindow(QMainWindow):
             self.show()
             self.status.setText("Bitte möglichst genau das quadratische Schachbrett markieren.")
             return
-        rect = QRect(x, y, width, height)
+        # RegionSelectionOverlay reports Qt global logical coordinates.
+        # Keep those coordinates in the same Qt coordinate system; do not
+        # multiply/divide by monitor DPI (that caused scaling and offsets).
+        selected = QRect(x, y, width, height)
+        size = min(selected.width(), selected.height())
+
+        # A chessboard must be square. Fit the largest square centered inside
+        # the selection, never larger than the selected area.
+        left = selected.x() + (selected.width() - size) // 2
+        top = selected.y() + (selected.height() - size) // 2
+        rect = QRect(left, top, size, size)
         self._calibrated_region = rect
-        # Keep the settings available in the scrollable panel after calibration.
-        size = min(rect.width(), rect.height())
-        self.board_popup.setGeometry(rect.x(), rect.y(), size, size)
+
+        target_screen = self.screenAt(rect.center())
+        if target_screen is not None and self.board_popup.windowHandle() is not None:
+            self.board_popup.windowHandle().setScreen(target_screen)
+        self.board_popup.setGeometry(rect)
         self.board.setMinimumSize(80, 80)
         self.board.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self.board_popup.show()
