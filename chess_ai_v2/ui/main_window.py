@@ -19,7 +19,7 @@ from chess_ai_v2.engine.worker import EngineWorker
 
 class MainWindow(QMainWindow):
     engine_position = Signal(str)
-    mirrored_click = Signal(int, int)
+    mirrored_click = Signal(int, int, bool)
 
     def __init__(self) -> None:
         super().__init__()
@@ -31,6 +31,7 @@ class MainWindow(QMainWindow):
         self._hotkey_id = 41
         self._hotkey_registered = False
         self._mouse_listener = None
+        self._external_drag_start = None
         self.mirrored_click.connect(self._handle_mirrored_click)
 
         self.setStyleSheet("""
@@ -180,14 +181,19 @@ class MainWindow(QMainWindow):
         WS_EX_TRANSPARENT = 0x00000020
         get_style = ctypes.windll.user32.GetWindowLongPtrW
         set_style = ctypes.windll.user32.SetWindowLongPtrW
+        get_style.argtypes = [wintypes.HWND, ctypes.c_int]
+        get_style.restype = ctypes.c_ssize_t
+        set_style.argtypes = [wintypes.HWND, ctypes.c_int, ctypes.c_ssize_t]
+        set_style.restype = ctypes.c_ssize_t
         style = get_style(hwnd, GWL_EXSTYLE)
         if enabled:
             set_style(hwnd, GWL_EXSTYLE, style | WS_EX_LAYERED | WS_EX_TRANSPARENT)
+            ctypes.windll.user32.SetLayeredWindowAttributes(hwnd, 0, 255, 0x00000002)
             try:
                 from pynput import mouse
                 def on_click(x, y, button, pressed):
-                    if pressed and button == mouse.Button.left:
-                        self.mirrored_click.emit(int(x), int(y))
+                    if button == mouse.Button.left:
+                        self.mirrored_click.emit(int(x), int(y), bool(pressed))
                 self._mouse_listener = mouse.Listener(on_click=on_click)
                 self._mouse_listener.start()
                 self.status.setText("Trainingsmodus AN: Klicks werden gespiegelt. F8 beendet den Modus.")
@@ -205,13 +211,23 @@ class MainWindow(QMainWindow):
                 self._mouse_listener = None
             self.status.setText("Trainingsmodus AUS: Chess AI V2 direkt bedienen.")
 
-    def _handle_mirrored_click(self, screen_x: int, screen_y: int) -> None:
+    def _handle_mirrored_click(self, screen_x: int, screen_y: int, pressed: bool) -> None:
         if not self._transparent_mode:
             return
         origin = self.board.mapToGlobal(QPoint(0, 0))
         local = QPoint(screen_x - origin.x(), screen_y - origin.y())
         square = self.board.square_at(local)
-        if square is not None:
+        if square is None:
+            if not pressed:
+                self._external_drag_start = None
+            return
+        if pressed:
+            self._external_drag_start = square
+            self.board.apply_external_click(square)
+            return
+        start = self._external_drag_start
+        self._external_drag_start = None
+        if start is not None and start != square:
             self.board.apply_external_click(square)
 
     def _register_configured_hotkey(self) -> None:
