@@ -98,6 +98,13 @@ class BoardWidget(QWidget):
         if self.selected is None:
             return
         target = self.square_at(event.position())
+        if self.free_move_mode:
+            if target is not None:
+                self._free_move_click(target)
+            else:
+                self._clear_selection()
+                self.update()
+            return
         if target is not None and target in self.targets:
             piece = self.board.piece_at(self.selected)
             move = chess.Move(self.selected, target)
