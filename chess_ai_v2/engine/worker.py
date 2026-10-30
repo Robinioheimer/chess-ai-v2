@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import os
 import json
-import math
 from pathlib import Path
 from PySide6.QtCore import QObject, Signal, Slot
 import chess
@@ -11,7 +10,7 @@ import chess.engine
 
 class EngineWorker(QObject):
     best_move = Signal(str, str, str)  # UCI move, score text, principal variation
-    candidate_moves = Signal(str)  # JSON list: UCI, evaluation percentage, PV
+    candidate_moves = Signal(str)  # JSON list: UCI, exact Stockfish score, PV
     status = Signal(str)
     failed = Signal(str)
 
@@ -76,15 +75,16 @@ class EngineWorker(QObject):
                 score = info.get("score")
                 pov_score = score.pov(self._board.turn) if score else chess.engine.Score(0)
                 cp = pov_score.score(mate_score=10000)
-                # Näherungsweise Gewinnchance aus der Engine-Bewertung.
-                # Das ist keine nachträgliche Zuggenauigkeit wie bei Chess.com.
+                # Exakte Stockfish-Bewertung in Centipawns bzw. Mattangabe.
+                # Perspektive bleibt die Seite, die in dieser Stellung am Zug ist.
                 if pov_score.is_mate():
-                    probability = 99.9 if (pov_score.mate() or 0) > 0 else 0.1
+                    mate = pov_score.mate()
+                    score_text = f"#{mate}" if mate is not None and mate > 0 else f"-#{abs(mate or 0)}"
                 else:
-                    probability = 100.0 / (1.0 + math.exp(-max(-1200, min(1200, cp or 0)) / 400.0))
+                    score_text = f"{(cp or 0) / 100:+.2f}"
                 results.append({
                     "uci": pv[0].uci(),
-                    "percent": round(probability, 1),
+                    "score": score_text,
                     "score": str(cp if cp is not None else 0),
                     "pv": " ".join(self._board.variation_san(pv[:8])),
                 })
