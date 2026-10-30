@@ -108,13 +108,18 @@ class BoardWidget(QWidget):
         self.flipped = not self.flipped
         self.update()
 
+    def _center(self, square: chess.Square, x0: float, y0: float, cell: float) -> QPointF:
+        file_, rank = chess.square_file(square), chess.square_rank(square)
+        col, row = (7-file_, rank) if self.flipped else (file_, 7-rank)
+        return QPointF(x0 + (col + 0.5) * cell, y0 + (row + 0.5) * cell)
+
     def paintEvent(self, event) -> None:
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         side = min(self.width(), self.height())
         x0, y0 = (self.width() - side) / 2, (self.height() - side) / 2
         cell = side / 8
-        light, dark = QColor("#F0D9B5"), QColor("#779556")
+        light, dark = QColor("#F1F1F1"), QColor("#55585F")
         for row in range(8):
             for col in range(8):
                 square = chess.square((7-col if self.flipped else col), (row if self.flipped else 7-row))
