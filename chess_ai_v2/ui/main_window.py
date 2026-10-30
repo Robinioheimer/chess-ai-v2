@@ -312,6 +312,48 @@ class MainWindow(QMainWindow):
         self.region_button.clicked.connect(self._start_region_selection)
         layout.addWidget(self.region_button)
 
+        self._setting_widgets = [
+            ("Engine", self.engine_row_widget),
+            ("Spielfeld", self.board_toggle_button),
+            ("Spielfeld", self.size_row_widget),
+            ("Spielfeld", self.mode_controls_widget),
+            ("Spielfeld", self.controls_widget),
+            ("Darstellung", self.opacity_row_widget),
+            ("Training", self.mode_row_widget),
+            ("Steuerung", self.hotkey_row_widget),
+            ("Steuerung", self.best_hotkey_row_widget),
+            ("Steuerung", self.popup_hotkey_row_widget),
+            ("Steuerung", self.back_hotkey_row_widget),
+            ("Steuerung", self.opacity_hotkey_row_widget),
+            ("Spielfeld", self.region_button),
+        ]
+        self._active_category = "Alle"
+        self.search_bar = QLineEdit()
+        self.search_bar.setPlaceholderText("Einstellungen suchen …")
+        self.search_bar.textChanged.connect(self._filter_settings)
+        self.search_button = QPushButton("⌕")
+        self.search_button.setFixedWidth(42)
+        self.search_button.setToolTip("Suche öffnen")
+        self.search_button.clicked.connect(self.search_bar.setFocus)
+        search_row = QWidget()
+        search_layout = QHBoxLayout(search_row)
+        search_layout.setContentsMargins(0, 0, 0, 0)
+        search_layout.addWidget(self.search_button)
+        search_layout.addWidget(self.search_bar, 1)
+        layout.insertWidget(0, search_row)
+        self.category_bar = QWidget()
+        category_layout = QHBoxLayout(self.category_bar)
+        category_layout.setContentsMargins(0, 0, 0, 0)
+        for category in ("Alle", "Engine", "Analyse", "Spielfeld", "Training", "Steuerung", "Darstellung", "Allgemein"):
+            button = QPushButton(category)
+            button.setCheckable(True)
+            button.setChecked(category == "Alle")
+            button.clicked.connect(lambda checked=False, name=category: self._select_category(name))
+            category_layout.addWidget(button)
+        layout.insertWidget(1, self.category_bar)
+        self._category_buttons = self.category_bar.findChildren(QPushButton)
+        self._filter_settings()
+
         self.board.position_changed.connect(self.engine_position.emit)
         self._load_settings()
         self._connect_setting_persistence()
@@ -336,6 +378,27 @@ class MainWindow(QMainWindow):
             )
         else:
             self.resize(560, 680)
+
+    def _select_category(self, category: str) -> None:
+        self._active_category = category
+        for button in self._category_buttons:
+            button.setChecked(button.text() == category)
+        self._filter_settings()
+
+    def _filter_settings(self, _query: str = "") -> None:
+        query = self.search_bar.text().strip().casefold()
+        if query:
+            self._active_category = "Alle"
+            for button in self._category_buttons:
+                button.setChecked(button.text() == "Alle")
+        for category, widget in self._setting_widgets:
+            searchable = category + " " + " ".join(
+                child.text() for child in widget.findChildren((QLabel, QPushButton, QCheckBox, QLineEdit))
+                if hasattr(child, "text")
+            )
+            matches_text = not query or query in searchable.casefold()
+            matches_category = self._active_category == "Alle" or category == self._active_category
+            widget.setVisible(matches_text and matches_category)
 
     def _load_settings(self) -> None:
         store = self.settings_store
