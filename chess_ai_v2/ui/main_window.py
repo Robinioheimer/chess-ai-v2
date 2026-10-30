@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import sys
 import ctypes
+import json
 from ctypes import wintypes
 
 from PySide6.QtCore import Qt, QThread, Signal, QPoint, QRect
@@ -283,6 +284,12 @@ class MainWindow(QMainWindow):
         self.depth = QSpinBox()
         self.depth.setRange(5, 30)
         self.depth.setValue(15)
+        engine_row.addWidget(QLabel("Pfeile"))
+        self.arrow_count = QSpinBox()
+        self.arrow_count.setRange(1, 3)
+        self.arrow_count.setValue(3)
+        self.arrow_count.setToolTip("Anzahl der angezeigten Engine-Varianten")
+        engine_row.addWidget(self.arrow_count)
         self.start_button = QPushButton("Stockfish starten")
         self.start_button.clicked.connect(self._start_engine)
         engine_row.addWidget(self.path_edit, 1)
@@ -594,15 +601,23 @@ class MainWindow(QMainWindow):
         if self._thread is not None:
             return
         self._thread = QThread(self)
-        self._worker = EngineWorker(self.path_edit.text().strip(), self.depth.value())
+        self._worker = EngineWorker(self.path_edit.text().strip(), self.depth.value(), self.arrow_count.value())
         self._worker.moveToThread(self._thread)
         self._thread.started.connect(self._worker.start)
         self.engine_position.connect(self._worker.set_position)
         self._worker.status.connect(self.status.setText)
         self._worker.failed.connect(self.status.setText)
         self._worker.best_move.connect(self._on_best_move)
+        self._worker.candidate_moves.connect(self._on_candidate_moves)
         self._thread.start()
         self.start_button.setEnabled(False)
+
+    def _on_candidate_moves(self, payload: str) -> None:
+        try:
+            data = json.loads(payload)
+            self.board.set_candidate_moves([(item["uci"], item["percent"]) for item in data[:self.arrow_count.value()]])
+        except (ValueError, KeyError, TypeError):
+            self.board.set_candidate_moves([])
 
     def _on_best_move(self, uci: str, score: str, pv: str) -> None:
         self.board.set_best_move(uci)
