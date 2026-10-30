@@ -187,18 +187,18 @@ class MainWindow(QMainWindow):
         # In Qt 6, QKeySequence[i] returns QKeyCombination, not an int.
         key = int(sequence[0].toCombined())
         modifiers = 0
-        if key & int(Qt.KeyboardModifier.AltModifier):
+        if key & Qt.KeyboardModifier.AltModifier.value:
             modifiers |= 0x0001
-        if key & int(Qt.KeyboardModifier.ControlModifier):
+        if key & Qt.KeyboardModifier.ControlModifier.value:
             modifiers |= 0x0002
-        if key & int(Qt.KeyboardModifier.ShiftModifier):
+        if key & Qt.KeyboardModifier.ShiftModifier.value:
             modifiers |= 0x0004
-        if key & int(Qt.KeyboardModifier.MetaModifier):
+        if key & Qt.KeyboardModifier.MetaModifier.value:
             modifiers |= 0x0008
         qt_key = key & 0x01FFFFFF
         # Qt encodes function keys as 0x01000030+n; Win32 uses VK_F1..VK_F24.
-        if int(Qt.Key.Key_F1) <= qt_key <= int(Qt.Key.Key_F24):
-            vk = 0x70 + (qt_key - int(Qt.Key.Key_F1))
+        if Qt.Key.Key_F1.value <= qt_key <= Qt.Key.Key_F24.value:
+            vk = 0x70 + (qt_key - Qt.Key.Key_F1.value)
         else:
             vk = qt_key
         if self._hotkey_registered:
