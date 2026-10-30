@@ -97,9 +97,15 @@ class MainWindow(QMainWindow):
         self._hotkey_id = 41
         self._best_move_hotkey_id = 42
         self._popup_hotkey_id = 43
+        self._back_hotkey_id = 44
+        self._hide_board_hotkey_id = 45
+        self._show_board_hotkey_id = 46
         self._hotkey_registered = False
         self._best_move_hotkey_registered = False
         self._popup_hotkey_registered = False
+        self._back_hotkey_registered = False
+        self._hide_board_hotkey_registered = False
+        self._show_board_hotkey_registered = False
         self._mouse_listener = None
         self._selection_listener = None
         self._selection_overlay = None
@@ -274,6 +280,7 @@ class MainWindow(QMainWindow):
         self._register_configured_hotkey()
         self._register_best_move_hotkey()
         self._register_popup_hotkey()
+        self._register_extra_hotkeys()
 
         screen = self.screen()
         if screen is not None:
@@ -486,6 +493,27 @@ class MainWindow(QMainWindow):
             self._popup_hotkey_registered = False
             self.status.setText("F7 ist bereits belegt; Popup weiterhin über die Einstellungen steuerbar.")
 
+    def _register_extra_hotkeys(self) -> None:
+        if sys.platform != "win32":
+            return
+        registrations = (
+            (self._back_hotkey_id, 0x75, "_back_hotkey_registered"),       # F6
+            (self._hide_board_hotkey_id, 0x74, "_hide_board_hotkey_registered"), # F5
+            (self._show_board_hotkey_id, 0x73, "_show_board_hotkey_registered"), # F4
+        )
+        for hotkey_id, vk, attr in registrations:
+            if ctypes.windll.user32.RegisterHotKey(int(self.winId()), hotkey_id, 0, vk):
+                setattr(self, attr, True)
+            else:
+                setattr(self, attr, False)
+                self.status.setText(f"Hotkey konnte nicht registriert werden (Taste { {0x75:'F6',0x74:'F5',0x73:'F4'}[vk] } möglicherweise belegt).")
+
+    def _set_board_transparent(self) -> None:
+        self.opacity_slider.setValue(0)
+
+    def _set_board_visible(self) -> None:
+        self.opacity_slider.setValue(100)
+
     def _execute_best_move(self) -> None:
         if self.board.play_best_move():
             self.status.setText("Bester Zug wurde auf dem Overlay-Brett ausgeführt.")
@@ -539,6 +567,15 @@ class MainWindow(QMainWindow):
                 if msg.message == 0x0312 and msg.wParam == self._popup_hotkey_id:
                     self._toggle_board_visibility()
                     return True, 0
+                if msg.message == 0x0312 and msg.wParam == self._back_hotkey_id:
+                    self.board.undo()
+                    return True, 0
+                if msg.message == 0x0312 and msg.wParam == self._hide_board_hotkey_id:
+                    self._set_board_transparent()
+                    return True, 0
+                if msg.message == 0x0312 and msg.wParam == self._show_board_hotkey_id:
+                    self._set_board_visible()
+                    return True, 0
             except Exception:
                 pass
         return super().nativeEvent(event_type, message)
@@ -588,6 +625,13 @@ class MainWindow(QMainWindow):
                 ctypes.windll.user32.UnregisterHotKey(int(self.winId()), self._best_move_hotkey_id)
             if self._popup_hotkey_registered:
                 ctypes.windll.user32.UnregisterHotKey(int(self.winId()), self._popup_hotkey_id)
+            for registered, hotkey_id in (
+                (self._back_hotkey_registered, self._back_hotkey_id),
+                (self._hide_board_hotkey_registered, self._hide_board_hotkey_id),
+                (self._show_board_hotkey_registered, self._show_board_hotkey_id),
+            ):
+                if registered:
+                    ctypes.windll.user32.UnregisterHotKey(int(self.winId()), hotkey_id)
         if hasattr(self, "board_popup"):
             self.board_popup.close()
         if self._worker is not None:
