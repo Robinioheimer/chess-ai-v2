@@ -81,7 +81,13 @@ class EngineWorker(QObject):
                     mate = pov_score.mate()
                     score_text = f"#{mate}" if mate is not None and mate > 0 else f"-#{abs(mate or 0)}"
                 else:
-                    expected_score = pov_score.wdl(model="sf", ply=self._board.ply()).expectation()
+                    # Glatte Prozent-Schaetzung aus der Centipawn-Bewertung.
+                    # Anders als WDL-Rundungen springt sie bei normalen
+                    # Bewertungen nicht sofort auf 0 % oder 100 %.
+                    import math
+                    cp_value = cp if cp is not None else 0
+                    expected_score = 1.0 / (1.0 + math.exp(-0.00368208 * cp_value))
+                    expected_score = max(0.01, min(0.99, expected_score))
                     score_text = f"{expected_score * 100:.1f} %"
                 results.append({
                     "uci": pv[0].uci(),
