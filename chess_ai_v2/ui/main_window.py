@@ -194,7 +194,12 @@ class MainWindow(QMainWindow):
             modifiers |= 0x0004
         if key & int(Qt.KeyboardModifier.MetaModifier):
             modifiers |= 0x0008
-        vk = key & 0x01FFFFFF
+        qt_key = key & 0x01FFFFFF
+        # Qt encodes function keys as 0x01000030+n; Win32 uses VK_F1..VK_F24.
+        if int(Qt.Key.Key_F1) <= qt_key <= int(Qt.Key.Key_F24):
+            vk = 0x70 + (qt_key - int(Qt.Key.Key_F1))
+        else:
+            vk = qt_key
         if self._hotkey_registered:
             ctypes.windll.user32.UnregisterHotKey(int(self.winId()), self._hotkey_id)
             self._hotkey_registered = False
