@@ -7,7 +7,7 @@ from ctypes import wintypes
 from PySide6.QtCore import Qt, QThread, Signal
 from PySide6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
-    QSlider, QLineEdit, QSpinBox, QCheckBox, QFrame
+    QSlider, QLineEdit, QSpinBox, QCheckBox, QFileDialog, QFrame
 )
 from chess_ai_v2.ui.board_widget import BoardWidget
 from chess_ai_v2.engine.worker import EngineWorker
@@ -109,12 +109,15 @@ class MainWindow(QMainWindow):
         engine_row = QHBoxLayout()
         self.path_edit = QLineEdit(os.environ.get("STOCKFISH_PATH", ""))
         self.path_edit.setPlaceholderText("Pfad zur Stockfish.exe")
+        self.browse_button = QPushButton("Durchsuchen …")
+        self.browse_button.clicked.connect(self._browse_stockfish)
         self.depth = QSpinBox()
         self.depth.setRange(5, 30)
         self.depth.setValue(15)
         self.start_button = QPushButton("Stockfish starten")
         self.start_button.clicked.connect(self._start_engine)
         engine_row.addWidget(self.path_edit, 1)
+        engine_row.addWidget(self.browse_button)
         engine_row.addWidget(QLabel("Tiefe"))
         engine_row.addWidget(self.depth)
         engine_row.addWidget(self.start_button)
@@ -172,6 +175,16 @@ class MainWindow(QMainWindow):
             self.pass_through.blockSignals(True)
             self.pass_through.setChecked(False)
             self.pass_through.blockSignals(False)
+
+    def _browse_stockfish(self) -> None:
+        path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Stockfish-Programm auswählen",
+            os.path.dirname(self.path_edit.text().strip()) or os.path.expanduser("~"),
+            "Stockfish (stockfish.exe);;Programme (*.exe);;Alle Dateien (*)",
+        )
+        if path:
+            self.path_edit.setText(path)
 
     def _start_engine(self) -> None:
         if self._thread is not None:
