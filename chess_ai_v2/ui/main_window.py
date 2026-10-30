@@ -19,8 +19,8 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.setWindowTitle("Chess AI V2")
         self.setWindowFlags(Qt.WindowType.Window | Qt.WindowType.WindowStaysOnTopHint)
-        self.setMinimumSize(390, 500)
-        self.resize(620, 760)
+        self.setMinimumSize(560, 760)
+        self.resize(760, 980)
         self.setWindowOpacity(0.96)
         self.setStyleSheet("""
             QMainWindow, QWidget { background: #17191f; color: #e9ebf0; font-family: Segoe UI; }
@@ -120,6 +120,15 @@ class MainWindow(QMainWindow):
         layout.addLayout(engine_row)
 
         self.board.position_changed.connect(self.engine_position.emit)
+        self._hotkey_registered = False
+        if sys.platform == "win32":
+            # F8 remains available even while mouse input is passed through.
+            try:
+                self._hotkey_registered = bool(
+                    ctypes.windll.user32.RegisterHotKey(int(self.winId()), 1, 0, 0x77)
+                )
+            except Exception:
+                self._hotkey_registered = False
         self._thread: QThread | None = None
         self._worker: EngineWorker | None = None
 
@@ -187,7 +196,20 @@ class MainWindow(QMainWindow):
         self.best_label.setText(f"Bester Zug: {san}  ·  Bewertung: {score}")
         self.pv_label.setText(f"Variantenfolge: {pv}")
 
+    def nativeEvent(self, event_type, message):
+        if sys.platform == "win32":
+            try:
+                msg = ctypes.cast(int(message), ctypes.POINTER(ctypes.c_long * 7)).contents
+                if msg[1] == 0x0312 and msg[2] == 1:  # WM_HOTKEY, our F8 id
+                    self.pass_through.setChecked(not self.pass_through.isChecked())
+                    return True, 0
+            except Exception:
+                pass
+        return super().nativeEvent(event_type, message)
+
     def closeEvent(self, event) -> None:
+        if self._hotkey_registered and sys.platform == "win32":
+            ctypes.windll.user32.UnregisterHotKey(int(self.winId()), 1)
         if self._worker is not None:
             self._worker.stop()
         if self._thread is not None:
