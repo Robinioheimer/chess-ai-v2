@@ -7,13 +7,13 @@ import json
 import shutil
 from ctypes import wintypes
 
-from PySide6.QtCore import Qt, QThread, Signal, QPoint, QRect, QSettings
+from PySide6.QtCore import Qt, QThread, Signal, QPoint, QRect, QSettings, QEvent, QPropertyAnimation, QEasingCurve
 from PySide6.QtGui import QPainter, QColor, QPen, QCursor
 from PySide6.QtGui import QKeySequence
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QSlider, QLineEdit, QSpinBox, QCheckBox, QFileDialog, QKeySequenceEdit,
-    QSizePolicy, QScrollArea, QInputDialog
+    QSizePolicy, QScrollArea, QInputDialog, QGraphicsDropShadowEffect
 )
 
 from chess_ai_v2.ui.board_widget import BoardWidget
@@ -122,20 +122,41 @@ class MainWindow(QMainWindow):
         self.region_selected.connect(self._apply_selected_region)
 
         self.setStyleSheet("""
-            QMainWindow, QWidget { background: #17191b; color: #e9edf3; font-family: Segoe UI; font-size: 10pt; }
-            QScrollArea, QScrollArea > QWidget > QWidget { background: #17191b; border: 0; }
-            QLabel { color: #e3e6eb; }
-            QPushButton { background: #292c31; color: #edf0f5; border: 1px solid #383c43; border-radius: 9px; padding: 9px 14px; }
-            QPushButton:hover { background: #373c44; border-color: #4b535f; }
-            QPushButton:pressed { background: #202329; }
-            QLineEdit, QSpinBox, QKeySequenceEdit { background: #25282d; color: #f1f3f6; border: 1px solid #393e46; border-radius: 10px; padding: 8px 10px; selection-background-color: #60aef2; }
-            QCheckBox { spacing: 10px; }
-            QCheckBox::indicator { width: 19px; height: 19px; border-radius: 5px; border: 2px solid #41464e; background: #202328; }
-            QCheckBox::indicator:checked { background: #60aef2; border-color: #60aef2; }
-            QSlider::groove:horizontal { height: 6px; background: #343940; border-radius: 3px; }
-            QSlider::handle:horizontal { background: #60aef2; width: 16px; margin: -6px 0; border-radius: 8px; }
-            QScrollBar:vertical { background: #17191b; width: 10px; margin: 3px; }
-            QScrollBar::handle:vertical { background: #41464e; border-radius: 5px; min-height: 35px; }
+            QMainWindow, QWidget {
+                background: #101113; color: #eceef1;
+                font-family: "Segoe UI"; font-size: 10pt;
+            }
+            QScrollArea, QScrollArea > QWidget > QWidget { background: #101113; border: 0; }
+            QLabel { color: #e4e6e9; background: transparent; }
+            QPushButton {
+                background: #242629; color: #f1f2f4;
+                border: 1px solid #383b40; border-radius: 12px;
+                padding: 10px 15px; font-weight: 600;
+            }
+            QPushButton:hover { background: #36393e; border-color: #686d75; }
+            QPushButton:pressed { background: #191a1d; border-color: #858a92; padding-top: 11px; }
+            QPushButton:disabled { color: #777b82; background: #1b1c1f; border-color: #292b30; }
+            QLineEdit, QSpinBox, QKeySequenceEdit {
+                background: #1b1d20; color: #f2f3f5; border: 1px solid #34373d;
+                border-radius: 11px; padding: 9px 12px;
+                selection-background-color: #777d86;
+            }
+            QLineEdit:focus, QSpinBox:focus, QKeySequenceEdit:focus { border: 1px solid #9298a1; background: #202226; }
+            QCheckBox { spacing: 11px; color: #d9dce0; }
+            QCheckBox::indicator { width: 19px; height: 19px; border-radius: 6px; border: 1px solid #555a62; background: #202226; }
+            QCheckBox::indicator:checked { background: #d9dce0; border-color: #f2f3f5; }
+            QSlider { min-height: 24px; }
+            QSlider::groove:horizontal { height: 7px; background: #35383e; border-radius: 4px; }
+            QSlider::sub-page:horizontal { background: #c6c9ce; border-radius: 4px; }
+            QSlider::add-page:horizontal { background: #292c31; border-radius: 4px; }
+            QSlider::handle:horizontal {
+                background: #f0f1f3; width: 17px; height: 17px;
+                margin: -6px 0; border: 2px solid #777c84; border-radius: 9px;
+            }
+            QSlider::handle:horizontal:hover { background: #ffffff; border-color: #ffffff; }
+            QScrollBar:vertical { background: #141518; width: 10px; margin: 4px; border-radius: 5px; }
+            QScrollBar::handle:vertical { background: #4a4e55; border-radius: 5px; min-height: 35px; }
+            QScrollBar::handle:vertical:hover { background: #777c84; }
             QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0; }
         """)
 
@@ -159,7 +180,7 @@ class MainWindow(QMainWindow):
         sidebar_layout.setContentsMargins(8, 12, 8, 12)
         sidebar_layout.setSpacing(7)
         brand = QLabel("CHESS AI")
-        brand.setStyleSheet("font-size: 13px; font-weight: 800; color: #60aef2; padding: 5px;")
+        brand.setStyleSheet("font-size: 13px; font-weight: 800; letter-spacing: 2px; color: #f1f2f4; padding: 7px 5px;")
         sidebar_layout.addWidget(brand)
         self._category_buttons = []
         for category, symbol in (
@@ -172,7 +193,7 @@ class MainWindow(QMainWindow):
             button.setChecked(category == "Alle")
             button.setStyleSheet(
                 "QPushButton { text-align: left; padding: 10px 8px; border: 0; background: transparent; }"
-                "QPushButton:checked { background: #303943; color: #70baff; border-left: 3px solid #60aef2; }"
+                "QPushButton:checked { background: #3a3d42; color: #ffffff; border: 1px solid #62666d; }"
             )
             button.clicked.connect(lambda checked=False, name=category: self._select_category(name))
             sidebar_layout.addWidget(button)
