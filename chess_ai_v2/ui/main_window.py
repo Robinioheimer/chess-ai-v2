@@ -29,7 +29,9 @@ class MainWindow(QMainWindow):
         self.resize(760, 980)
         self._transparent_mode = False
         self._hotkey_id = 41
+        self._best_move_hotkey_id = 42
         self._hotkey_registered = False
+        self._best_move_hotkey_registered = False
         self._mouse_listener = None
         self._external_drag_start = None
         self.mirrored_click.connect(self._handle_mirrored_click)
@@ -83,6 +85,13 @@ class MainWindow(QMainWindow):
         size_row.addWidget(self.board_size_value)
         layout.addLayout(size_row)
 
+        mode_controls = QHBoxLayout()
+        self.free_move_check = QCheckBox("Freies Bewegen (jede Figur auf jedes Feld)")
+        self.free_move_check.toggled.connect(self.board.set_free_move_mode)
+        mode_controls.addWidget(self.free_move_check)
+        mode_controls.addStretch()
+        layout.addLayout(mode_controls)
+
         controls = QHBoxLayout()
         for label, callback in (("↶", self.board.undo), ("Reset", self.board.reset), ("Flip", self.board.flip)):
             button = QPushButton(label)
@@ -126,6 +135,16 @@ class MainWindow(QMainWindow):
         hotkey_row.addWidget(self.hotkey_button)
         layout.addLayout(hotkey_row)
 
+        best_hotkey_row = QHBoxLayout()
+        best_hotkey_row.addWidget(QLabel("Hotkey: besten Zug ausführen"))
+        self.best_move_hotkey_edit = QKeySequenceEdit(QKeySequence("F9"))
+        self.best_move_hotkey_edit.setMaximumWidth(170)
+        best_hotkey_row.addWidget(self.best_move_hotkey_edit)
+        self.best_move_hotkey_button = QPushButton("Hotkey übernehmen")
+        self.best_move_hotkey_button.clicked.connect(self._register_best_move_hotkey)
+        best_hotkey_row.addWidget(self.best_move_hotkey_button)
+        layout.addLayout(best_hotkey_row)
+
         engine_row = QHBoxLayout()
         self.path_edit = QLineEdit(os.environ.get("STOCKFISH_PATH", ""))
         self.path_edit.setPlaceholderText("Pfad zur Stockfish.exe")
@@ -147,6 +166,7 @@ class MainWindow(QMainWindow):
         self._thread: QThread | None = None
         self._worker: EngineWorker | None = None
         self._register_configured_hotkey()
+        self._register_best_move_hotkey()
 
     def resizeEvent(self, event) -> None:
         super().resizeEvent(event)
@@ -241,6 +261,48 @@ class MainWindow(QMainWindow):
             # selection created on mouse-down.
             self.board.apply_external_click(square)
 
+    def _hotkey_parts(self, sequence: QKeySequence):
+        if sequence.isEmpty() or sequence.count() != 1:
+            return None
+        key = int(sequence[0].toCombined())
+        modifiers = 0
+        if key & Qt.KeyboardModifier.AltModifier.value:
+            modifiers |= 0x0001
+        if key & Qt.KeyboardModifier.ControlModifier.value:
+            modifiers |= 0x0002
+        if key & Qt.KeyboardModifier.ShiftModifier.value:
+            modifiers |= 0x0004
+        if key & Qt.KeyboardModifier.MetaModifier.value:
+            modifiers |= 0x0008
+        qt_key = key & 0x01FFFFFF
+        if Qt.Key.Key_F1.value <= qt_key <= Qt.Key.Key_F24.value:
+            vk = 0x70 + (qt_key - Qt.Key.Key_F1.value)
+        else:
+            vk = qt_key
+        return modifiers, vk
+
+    def _register_best_move_hotkey(self) -> None:
+        if sys.platform != "win32":
+            return
+        parts = self._hotkey_parts(self.best_move_hotkey_edit.keySequence())
+        if parts is None:
+            self.status.setText("Bitte genau eine Tastenkombination für den besten Zug festlegen.")
+            return
+        if self._best_move_hotkey_registered:
+            ctypes.windll.user32.UnregisterHotKey(int(self.winId()), self._best_move_hotkey_id)
+            self._best_move_hotkey_registered = False
+        if ctypes.windll.user32.RegisterHotKey(int(self.winId()), self._best_move_hotkey_id, *parts):
+            self._best_move_hotkey_registered = True
+            self.status.setText("Hotkey für besten Zug gesetzt.")
+        else:
+            self.status.setText("Hotkey für besten Zug ist belegt oder ungültig.")
+
+    def _execute_best_move(self) -> None:
+        if self.board.play_best_move():
+            self.status.setText("Bester Zug wurde auf dem Overlay-Brett ausgeführt.")
+        else:
+            self.status.setText("Kein legaler bester Zug verfügbar. Erst Stockfish starten/Analyse abwarten.")
+
     def _register_configured_hotkey(self) -> None:
         if sys.platform != "win32":
             self.status.setText("Globale Hotkeys sind nur unter Windows verfügbar.")
@@ -281,6 +343,9 @@ class MainWindow(QMainWindow):
                 msg = ctypes.cast(int(message), ctypes.POINTER(wintypes.MSG)).contents
                 if msg.message == 0x0312 and msg.wParam == self._hotkey_id:
                     self.pass_through.setChecked(not self.pass_through.isChecked())
+                    return True, 0
+                if msg.message == 0x0312 and msg.wParam == self._best_move_hotkey_id:
+                    self._execute_best_move()
                     return True, 0
             except Exception:
                 pass
@@ -323,8 +388,11 @@ class MainWindow(QMainWindow):
         if self._mouse_listener is not None:
             self._mouse_listener.stop()
             self._mouse_listener = None
-        if self._hotkey_registered and sys.platform == "win32":
-            ctypes.windll.user32.UnregisterHotKey(int(self.winId()), self._hotkey_id)
+        if sys.platform == "win32":
+            if self._hotkey_registered:
+                ctypes.windll.user32.UnregisterHotKey(int(self.winId()), self._hotkey_id)
+            if self._best_move_hotkey_registered:
+                ctypes.windll.user32.UnregisterHotKey(int(self.winId()), self._best_move_hotkey_id)
         if self._worker is not None:
             self._worker.stop()
         if self._thread is not None:
