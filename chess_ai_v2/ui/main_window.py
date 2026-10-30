@@ -10,7 +10,7 @@ from PySide6.QtGui import QKeySequence
 from PySide6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QSlider, QLineEdit, QSpinBox, QCheckBox, QFileDialog, QKeySequenceEdit,
-    QSizePolicy
+    QSizePolicy, QScrollArea
 )
 
 from chess_ai_v2.ui.board_widget import BoardWidget
@@ -54,9 +54,19 @@ class MainWindow(QMainWindow):
         root.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
         root.setStyleSheet("background: transparent;")
         self.setCentralWidget(root)
-        layout = QVBoxLayout(root)
-        layout.setContentsMargins(10, 10, 10, 10)
-        layout.setSpacing(7)
+        root_layout = QVBoxLayout(root)
+        root_layout.setContentsMargins(6, 6, 6, 6)
+        self.settings_scroll = QScrollArea()
+        self.settings_scroll.setWidgetResizable(True)
+        self.settings_scroll.setFrameShape(QScrollArea.Shape.NoFrame)
+        self.settings_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.settings_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self.settings_content = QWidget()
+        self.settings_scroll.setWidget(self.settings_content)
+        root_layout.addWidget(self.settings_scroll)
+        layout = QVBoxLayout(self.settings_content)
+        layout.setContentsMargins(8, 8, 12, 8)
+        layout.setSpacing(9)
 
         self.header_widget = QWidget()
         header = QHBoxLayout(self.header_widget)
@@ -82,7 +92,11 @@ class MainWindow(QMainWindow):
         self.board.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
         board_layout.addWidget(self.board, 0, Qt.AlignmentFlag.AlignCenter)
         board_layout.addStretch(1)
-        layout.addWidget(self.board_area, 1)
+        layout.addWidget(self.board_area)
+        self.board_area.hide()
+        self.board_toggle_button = QPushButton("Spielfeld anzeigen")
+        self.board_toggle_button.clicked.connect(self._toggle_board_visibility)
+        layout.addWidget(self.board_toggle_button)
 
         self.size_row_widget = QWidget()
         size_row = QHBoxLayout(self.size_row_widget)
@@ -186,7 +200,7 @@ class MainWindow(QMainWindow):
         self.engine_row_widget.setLayout(engine_row)
         layout.addWidget(self.engine_row_widget)
 
-        self.region_button = QPushButton("Spielfeldbereich auswählen")
+        self.region_button = QPushButton("Spielfeldgröße mit Maus markieren")
         self.region_button.clicked.connect(self._start_region_selection)
         layout.addWidget(self.region_button)
 
@@ -206,7 +220,8 @@ class MainWindow(QMainWindow):
         area = self.board_area.contentsRect()
         available = max(80, min(area.width(), area.height()))
         if self._calibrated_region is not None:
-            self.board.setFixedSize(available, available)
+            size = min(available, self._calibrated_region.width(), self._calibrated_region.height())
+            self.board.setFixedSize(max(80, size), max(80, size))
         else:
             size = min(self.board_size_slider.value(), available)
             self.board.setFixedSize(size, size)
@@ -246,20 +261,23 @@ class MainWindow(QMainWindow):
         dpr = float(self.devicePixelRatioF() or 1.0)
         rect = QRect(round(x/dpr), round(y/dpr), round(width/dpr), round(height/dpr))
         self._calibrated_region = rect
-        for widget in (self.header_widget, self.size_row_widget, self.mode_controls_widget, self.controls_widget,
-                       self.best_label, self.pv_label, self.opacity_row_widget, self.mode_row_widget,
-                       self.hotkey_row_widget, self.best_hotkey_row_widget, self.engine_row_widget,
-                       self.region_button):
-            widget.hide()
+        # Keep the settings available in the scrollable panel after calibration.
         self.board_area.setContentsMargins(0, 0, 0, 0)
+        self.board_area.show()
+        self.board_toggle_button.setText("Spielfeld ausblenden")
         self.board.setMinimumSize(80, 80)
         self.board.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
-        self.setMinimumSize(80, 80)
-        self.setMaximumSize(4096, 4096)
-        self.setGeometry(rect)
+        self.board_area.setMinimumHeight(rect.height())
+        self.board.setFixedSize(min(rect.width(), rect.height()), min(rect.width(), rect.height()))
+        self._fit_board()
         self.show()
         self.raise_()
-        self.status.setText("Spielfeldbereich übernommen. Einstellungen über erneute Bereichsauswahl/Zurücksetzen verfügbar.")
+        self.status.setText("Bereich übernommen. Das Brett ist sichtbar; weitere Einstellungen findest du im Scrollmenü.")
+
+    def _toggle_board_visibility(self) -> None:
+        visible = not self.board_area.isVisible()
+        self.board_area.setVisible(visible)
+        self.board_toggle_button.setText("Spielfeld ausblenden" if visible else "Spielfeld anzeigen")
 
     def _set_opacity(self, value: int) -> None:
         self.board.set_visual_opacity(value)
