@@ -194,7 +194,7 @@ class MainWindow(QMainWindow):
             button.clicked.connect(callback)
             controls.addWidget(button)
         layout.addWidget(self.controls_widget)
-        self.controls_widget.hide()
+        # Board controls stay in the scrollable settings window, not in the popup.
         self.best_label = QLabel("Bester Zug: –")
         self.pv_label = QLabel("Warte auf Engine-Analyse …")
 
