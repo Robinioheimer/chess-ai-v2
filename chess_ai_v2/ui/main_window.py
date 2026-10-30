@@ -349,6 +349,7 @@ class MainWindow(QMainWindow):
             ("Steuerung", self.best_hotkey_row_widget),
             ("Steuerung", self.popup_hotkey_row_widget),
             ("Steuerung", self.back_hotkey_row_widget),
+            ("Steuerung", self.opacity_hotkey_row_widget),
             ("Spielfeld", self.region_button),
         ]
         self._active_category = "Alle"
@@ -367,9 +368,7 @@ class MainWindow(QMainWindow):
         self.search_bar.setMaximumWidth(560)
         search_layout.addWidget(self.search_bar, 4)
         search_layout.addStretch(1)
-        layout.insertWidget(0, search_row)
-        layout.removeWidget(self.opacity_hotkey_row_widget)
-        layout.insertWidget(0, self.opacity_hotkey_row_widget)
+        layout.insertWidget(1, search_row)
         self._search_row = search_row
         self._filter_settings()
 
