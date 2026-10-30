@@ -9,7 +9,7 @@ from PySide6.QtCore import Qt, QThread, Signal, QPoint, QRect
 from PySide6.QtGui import QPainter, QColor, QPen
 from PySide6.QtGui import QKeySequence
 from PySide6.QtWidgets import (
-    QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
+    QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QSlider, QLineEdit, QSpinBox, QCheckBox, QFileDialog, QKeySequenceEdit,
     QSizePolicy, QScrollArea
 )
@@ -338,7 +338,7 @@ class MainWindow(QMainWindow):
         rect = QRect(left, top, size, size)
         self._calibrated_region = rect
 
-        target_screen = self.screenAt(rect.center())
+        target_screen = QApplication.screenAt(rect.center())
         if target_screen is not None and self.board_popup.windowHandle() is not None:
             self.board_popup.windowHandle().setScreen(target_screen)
         self.board_popup.setGeometry(rect)
