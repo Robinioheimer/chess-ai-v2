@@ -81,11 +81,11 @@ class EngineWorker(QObject):
                     mate = pov_score.mate()
                     score_text = f"#{mate}" if mate is not None and mate > 0 else f"-#{abs(mate or 0)}"
                 else:
-                    score_text = f"{(cp or 0) / 100:+.2f}"
+                    expected_score = pov_score.wdl(model="sf", ply=self._board.ply()).expectation()
+                    score_text = f"{expected_score * 100:.1f} %"
                 results.append({
                     "uci": pv[0].uci(),
                     "score": score_text,
-                    "score": str(cp if cp is not None else 0),
                     "pv": " ".join(self._board.variation_san(pv[:8])),
                 })
             if not results:
