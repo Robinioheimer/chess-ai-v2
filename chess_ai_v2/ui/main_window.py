@@ -462,7 +462,6 @@ class MainWindow(QMainWindow):
         self.path_edit.textChanged.connect(self._save_settings)
         self.depth.valueChanged.connect(self._save_settings)
         self.arrow_count.valueChanged.connect(self._save_settings)
-        self.board_size_slider.valueChanged.connect(self._save_settings)
         self.opacity_slider.valueChanged.connect(self._save_settings)
         self.free_move_check.toggled.connect(self._save_settings)
         for edit in (self.hotkey_edit, self.best_move_hotkey_edit, self.popup_hotkey_edit,
