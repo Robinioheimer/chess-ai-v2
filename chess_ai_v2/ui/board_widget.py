@@ -43,6 +43,26 @@ class BoardWidget(QWidget):
         # Empty squares pass clicks through; an active drag keeps the mouse grab.
         return self.board.piece_at(square) is not None
 
+    def apply_external_click(self, square: chess.Square) -> None:
+        """Mirror a physical click observed outside the overlay onto this board."""
+        piece = self.board.piece_at(square)
+        if self.selected is not None and square in self.targets:
+            moving_piece = self.board.piece_at(self.selected)
+            move = chess.Move(self.selected, square)
+            if moving_piece and moving_piece.piece_type == chess.PAWN and chess.square_rank(square) in (0, 7):
+                move = chess.Move(self.selected, square, promotion=chess.QUEEN)
+            if move in self.board.legal_moves:
+                self.board.push(move)
+                self._clear_selection()
+                self.position_changed.emit(self.board.fen())
+                self.update()
+                return
+        if piece and piece.color == self.board.turn:
+            self.selected = square
+            self.targets = {m.to_square for m in self.board.legal_moves if m.from_square == square}
+        else:
+            self._clear_selection()
+        self.update()
     def mousePressEvent(self, event) -> None:
         if event.button() != Qt.MouseButton.LeftButton:
             return
