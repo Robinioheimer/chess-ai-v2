@@ -301,41 +301,45 @@ class MainWindow(QMainWindow):
             layout, "Hotkey: Sichtbarkeit 0 % / 100 %", "F4", self._register_opacity_hotkey
         )
 
-        engine_row = QHBoxLayout()
         self.path_edit = QLineEdit(os.environ.get("STOCKFISH_PATH", ""))
         self.path_edit.setPlaceholderText("Pfad zur Stockfish.exe")
         self.browse_button = QPushButton("Durchsuchen …")
         self.browse_button.clicked.connect(self._browse_stockfish)
-        self.auto_find_button = QPushButton("Automatisch finden")
-        self.auto_find_button.clicked.connect(self._auto_find_stockfish)
+        self.start_button = QPushButton("Stockfish starten")
+        self.start_button.clicked.connect(self._start_engine)
+        engine_path_row = QHBoxLayout()
+        engine_path_row.addWidget(self.path_edit, 1)
+        engine_path_row.addWidget(self.browse_button)
+        engine_path_row.addWidget(self.start_button)
+        self.engine_path_widget = QWidget()
+        self.engine_path_widget.setLayout(engine_path_row)
+        layout.addWidget(self.engine_path_widget)
+
         self.depth = QSpinBox()
         self.depth.setRange(5, 30)
         self.depth.setValue(15)
-        engine_row.addWidget(QLabel("Pfeile"))
         self.arrow_count = QSpinBox()
         self.arrow_count.setRange(1, 3)
         self.arrow_count.setValue(3)
         self.arrow_count.setToolTip("Anzahl der angezeigten Engine-Varianten")
         self.arrow_count.valueChanged.connect(self.analysis_multipv_changed.emit)
-        engine_row.addWidget(self.arrow_count)
-        self.start_button = QPushButton("Stockfish starten")
-        self.start_button.clicked.connect(self._start_engine)
-        engine_row.addWidget(self.path_edit, 1)
-        engine_row.addWidget(self.browse_button)
-        engine_row.addWidget(self.auto_find_button)
-        engine_row.addWidget(QLabel("Tiefe"))
-        engine_row.addWidget(self.depth)
-        engine_row.addWidget(self.start_button)
-        self.engine_row_widget = QWidget()
-        self.engine_row_widget.setLayout(engine_row)
-        layout.addWidget(self.engine_row_widget)
+        engine_options_row = QHBoxLayout()
+        engine_options_row.addWidget(QLabel("Pfeile"))
+        engine_options_row.addWidget(self.arrow_count)
+        engine_options_row.addWidget(QLabel("Analysetiefe"))
+        engine_options_row.addWidget(self.depth)
+        engine_options_row.addStretch(1)
+        self.engine_options_widget = QWidget()
+        self.engine_options_widget.setLayout(engine_options_row)
+        layout.addWidget(self.engine_options_widget)
 
         self.region_button = QPushButton("Spielfeldgröße mit Maus markieren")
         self.region_button.clicked.connect(self._start_region_selection)
         layout.addWidget(self.region_button)
 
         self._setting_widgets = [
-            ("Engine", self.engine_row_widget),
+            ("Engine", self.engine_path_widget),
+            ("Engine", self.engine_options_widget),
             ("Spielfeld", self.board_toggle_button),
             ("Spielfeld", self.mode_controls_widget),
             ("Spielfeld", self.controls_widget),
@@ -345,7 +349,6 @@ class MainWindow(QMainWindow):
             ("Steuerung", self.best_hotkey_row_widget),
             ("Steuerung", self.popup_hotkey_row_widget),
             ("Steuerung", self.back_hotkey_row_widget),
-            ("Steuerung", self.opacity_hotkey_row_widget),
             ("Spielfeld", self.region_button),
         ]
         self._active_category = "Alle"
@@ -365,6 +368,9 @@ class MainWindow(QMainWindow):
         search_layout.addWidget(self.search_bar, 4)
         search_layout.addStretch(1)
         layout.insertWidget(0, search_row)
+        layout.removeWidget(self.opacity_hotkey_row_widget)
+        layout.insertWidget(0, self.opacity_hotkey_row_widget)
+        self._search_row = search_row
         self._filter_settings()
 
         self.board.position_changed.connect(self.engine_position.emit)
@@ -376,7 +382,9 @@ class MainWindow(QMainWindow):
         self._register_best_move_hotkey()
         self._register_popup_hotkey()
         self._register_extra_hotkeys()
-        if not self.path_edit.text().strip():
+        saved_path = self.path_edit.text().strip()
+        if not saved_path or not os.path.isfile(saved_path):
+            self.path_edit.clear()
             self._auto_find_stockfish(silent=True)
 
         screen = self.screen()
@@ -394,12 +402,14 @@ class MainWindow(QMainWindow):
 
     def _select_category(self, category: str) -> None:
         self._active_category = category
+        self.search_bar.clear()
         for button in self._category_buttons:
             button.setChecked(button.property("category") == category)
         self._filter_settings()
 
     def _filter_settings(self, _query: str = "") -> None:
         query = self.search_bar.text().strip().casefold()
+        self._search_row.setVisible(self._active_category == "Alle")
         if query:
             self._active_category = "Alle"
             for button in self._category_buttons:
