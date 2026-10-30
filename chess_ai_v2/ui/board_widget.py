@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import chess
-import chess.svg
+from chess import svg as chess_svg
 from PySide6.QtCore import Qt, Signal, QRectF, QPointF, QByteArray
 from PySide6.QtGui import QColor, QPainter, QPen, QPolygonF
 from PySide6.QtSvg import QSvgRenderer
@@ -227,7 +227,7 @@ class BoardWidget(QWidget):
                     symbol = piece.symbol()
                     renderer = self._piece_svg_cache.get(symbol)
                     if renderer is None:
-                        svg = chess.svg.piece(piece, size=256)
+                        svg = chess_svg.piece(piece, size=256)
                         renderer = QSvgRenderer(QByteArray(svg.encode("utf-8")))
                         self._piece_svg_cache[symbol] = renderer
                     painter.save()
