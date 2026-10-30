@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import chess
+import chess.svg
 from PySide6.QtCore import Qt, Signal, QRectF, QPointF, QByteArray
 from PySide6.QtGui import QColor, QPainter, QPen, QPolygonF
 from PySide6.QtSvg import QSvgRenderer
