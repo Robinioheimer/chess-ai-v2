@@ -1,15 +1,10 @@
 from __future__ import annotations
 
 import chess
-from PySide6.QtCore import Qt, Signal, QRectF, QPointF
-from PySide6.QtGui import QColor, QPainter, QPen, QFont, QPolygonF
+from PySide6.QtCore import Qt, Signal, QRectF, QPointF, QByteArray
+from PySide6.QtGui import QColor, QPainter, QPen, QPolygonF
+from PySide6.QtSvg import QSvgRenderer
 from PySide6.QtWidgets import QWidget
-
-
-PIECES = {
-    "K": "♔", "Q": "♕", "R": "♖", "B": "♗", "N": "♘", "P": "♙",
-    "k": "♚", "q": "♛", "r": "♜", "b": "♝", "n": "♞", "p": "♟",
-}
 
 
 class BoardWidget(QWidget):
@@ -24,6 +19,7 @@ class BoardWidget(QWidget):
         self.best_move: chess.Move | None = None
         self.free_move_mode = False
         self.visual_opacity = 100
+        self._piece_svg_cache: dict[str, QSvgRenderer] = {}
         self.setMinimumSize(160, 160)
         self.setMouseTracking(True)
 
@@ -224,20 +220,20 @@ class BoardWidget(QWidget):
                     painter.drawEllipse(rect.center(), cell*0.13, cell*0.13)
                 piece = self.board.piece_at(square)
                 if piece and alpha > 0:
-                    glyph = PIECES[piece.symbol()]
-                    painter.setFont(QFont("Segoe UI Symbol", int(cell*0.72)))
-                    if piece.color:
-                        # Dark outline keeps white pieces visible on light squares.
-                        painter.setPen(QPen(QColor("#20242b"), max(2, int(cell * 0.055))))
-                        painter.drawText(rect.translated(0, 1), Qt.AlignmentFlag.AlignCenter, glyph)
-                        painter.setPen(QPen(QColor("#fffdf4"), 0))
-                        painter.drawText(rect, Qt.AlignmentFlag.AlignCenter, glyph)
-                    else:
-                        # A light outline separates black pieces from dark squares.
-                        painter.setPen(QPen(QColor("#f5f0e6"), max(2, int(cell * 0.045))))
-                        painter.drawText(rect.translated(0, 1), Qt.AlignmentFlag.AlignCenter, glyph)
-                        painter.setPen(QPen(QColor("#17191f"), 0))
-                        painter.drawText(rect, Qt.AlignmentFlag.AlignCenter, glyph)
+                    # python-chess liefert hochwertige Staunton-SVG-Figuren.
+                    # Sie wirken deutlich näher an klassischen Online-Schachsets
+                    # als die bisherigen Unicode-Schriftzeichen.
+                    symbol = piece.symbol()
+                    renderer = self._piece_svg_cache.get(symbol)
+                    if renderer is None:
+                        svg = chess.svg.piece(piece, size=256)
+                        renderer = QSvgRenderer(QByteArray(svg.encode("utf-8")))
+                        self._piece_svg_cache[symbol] = renderer
+                    painter.save()
+                    painter.setOpacity(alpha / 255.0)
+                    margin = cell * 0.035
+                    renderer.render(painter, rect.adjusted(margin, margin, -margin, -margin))
+                    painter.restore()
         if self.best_move:
             for sq in (self.best_move.from_square, self.best_move.to_square):
                 file_, rank = chess.square_file(sq), chess.square_rank(sq)
