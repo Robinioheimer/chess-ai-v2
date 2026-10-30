@@ -22,7 +22,7 @@ class BoardWidget(QWidget):
         self.selected: chess.Square | None = None
         self.targets: set[chess.Square] = set()
         self.best_move: chess.Move | None = None
-        self.setMinimumSize(320, 320)
+        self.setMinimumSize(160, 160)
         self.setMouseTracking(True)
 
     def sizeHint(self):
@@ -38,6 +38,10 @@ class BoardWidget(QWidget):
             return None
         file_, rank = (7 - col, row) if self.flipped else (col, 7 - row)
         return chess.square(file_, rank)
+
+    def piece_at_visual_hit(self, point, square: chess.Square) -> bool:
+        # Empty squares pass clicks through; an active drag keeps the mouse grab.
+        return self.board.piece_at(square) is not None
 
     def mousePressEvent(self, event) -> None:
         if event.button() != Qt.MouseButton.LeftButton:
