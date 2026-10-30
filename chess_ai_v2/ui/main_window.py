@@ -111,7 +111,6 @@ class MainWindow(QMainWindow):
         self._hotkey_registered = False
         self._best_move_hotkey_registered = False
         self._popup_hotkey_registered = False
-        self._back_hotkey_registered = False
         self._visibility_toggle_hotkey_registered = False
         self._mouse_listener = None
         self._selection_listener = None
@@ -294,9 +293,6 @@ class MainWindow(QMainWindow):
         self.popup_hotkey_edit, self.popup_hotkey_button, self.popup_hotkey_row_widget = self._make_hotkey_row(
             layout, "Hotkey: Spielfeld ein-/ausblenden", "F7", self._register_popup_hotkey
         )
-        self.back_hotkey_edit, self.back_hotkey_button, self.back_hotkey_row_widget = self._make_hotkey_row(
-            layout, "Hotkey: Letzten Zug zurücknehmen", "F6", self._register_back_hotkey
-        )
         self.opacity_hotkey_edit, self.opacity_hotkey_button, self.opacity_hotkey_row_widget = self._make_hotkey_row(
             layout, "Hotkey: Sichtbarkeit 0 % / 100 %", "F4", self._register_opacity_hotkey
         )
@@ -348,7 +344,6 @@ class MainWindow(QMainWindow):
             ("Steuerung", self.hotkey_row_widget),
             ("Steuerung", self.best_hotkey_row_widget),
             ("Steuerung", self.popup_hotkey_row_widget),
-            ("Steuerung", self.back_hotkey_row_widget),
             ("Steuerung", self.opacity_hotkey_row_widget),
             ("Spielfeld", self.region_button),
         ]
@@ -434,7 +429,6 @@ class MainWindow(QMainWindow):
             ("hotkeys/training", self.hotkey_edit),
             ("hotkeys/best_move", self.best_move_hotkey_edit),
             ("hotkeys/popup", self.popup_hotkey_edit),
-            ("hotkeys/back", self.back_hotkey_edit),
             ("hotkeys/opacity", self.opacity_hotkey_edit),
         ):
             edit.setKeySequence(QKeySequence(store.value(key, edit.keySequence().toString(), type=str)))
@@ -450,7 +444,6 @@ class MainWindow(QMainWindow):
             ("hotkeys/training", self.hotkey_edit.keySequence().toString()),
             ("hotkeys/best_move", self.best_move_hotkey_edit.keySequence().toString()),
             ("hotkeys/popup", self.popup_hotkey_edit.keySequence().toString()),
-            ("hotkeys/back", self.back_hotkey_edit.keySequence().toString()),
             ("hotkeys/opacity", self.opacity_hotkey_edit.keySequence().toString()),
         )
         for key, value in values:
@@ -464,7 +457,7 @@ class MainWindow(QMainWindow):
         self.opacity_slider.valueChanged.connect(self._save_settings)
         self.free_move_check.toggled.connect(self._save_settings)
         for edit in (self.hotkey_edit, self.best_move_hotkey_edit, self.popup_hotkey_edit,
-                     self.back_hotkey_edit, self.opacity_hotkey_edit):
+                     self.opacity_hotkey_edit):
             edit.keySequenceChanged.connect(self._save_settings)
 
     def _find_stockfish_candidates(self) -> list[str]:
@@ -725,14 +718,10 @@ class MainWindow(QMainWindow):
     def _register_popup_hotkey(self) -> None:
         self._apply_hotkey(self.popup_hotkey_edit, self._popup_hotkey_id, "_popup_hotkey_registered", "Spielfeld ein-/ausblenden")
 
-    def _register_back_hotkey(self) -> None:
-        self._apply_hotkey(self.back_hotkey_edit, self._back_hotkey_id, "_back_hotkey_registered", "letzten Zug zurücknehmen")
-
     def _register_opacity_hotkey(self) -> None:
         self._apply_hotkey(self.opacity_hotkey_edit, self._visibility_toggle_hotkey_id, "_visibility_toggle_hotkey_registered", "Sichtbarkeit umschalten")
 
     def _register_extra_hotkeys(self) -> None:
-        self._register_back_hotkey()
         self._register_opacity_hotkey()
 
     def _toggle_board_opacity(self) -> None:
@@ -759,9 +748,6 @@ class MainWindow(QMainWindow):
                     return True, 0
                 if msg.message == 0x0312 and msg.wParam == self._popup_hotkey_id:
                     self._toggle_board_visibility()
-                    return True, 0
-                if msg.message == 0x0312 and msg.wParam == self._back_hotkey_id:
-                    self.board.undo()
                     return True, 0
                 if msg.message == 0x0312 and msg.wParam == self._visibility_toggle_hotkey_id:
                     self._toggle_board_opacity()
@@ -823,7 +809,6 @@ class MainWindow(QMainWindow):
                 (self._hotkey_registered, self._hotkey_id),
                 (self._best_move_hotkey_registered, self._best_move_hotkey_id),
                 (self._popup_hotkey_registered, self._popup_hotkey_id),
-                (self._back_hotkey_registered, self._back_hotkey_id),
                 (self._visibility_toggle_hotkey_registered, self._visibility_toggle_hotkey_id),
             ):
                 if registered:
