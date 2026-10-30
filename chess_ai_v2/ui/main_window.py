@@ -249,6 +249,16 @@ class MainWindow(QMainWindow):
         self.best_hotkey_row_widget.setLayout(best_hotkey_row)
         layout.addWidget(self.best_hotkey_row_widget)
 
+        self.popup_hotkey_edit, self.popup_hotkey_button, self.popup_hotkey_row_widget = self._make_hotkey_row(
+            layout, "Hotkey: Spielfeld ein-/ausblenden", "F7", self._register_popup_hotkey
+        )
+        self.back_hotkey_edit, self.back_hotkey_button, self.back_hotkey_row_widget = self._make_hotkey_row(
+            layout, "Hotkey: Letzten Zug zurücknehmen", "F6", self._register_back_hotkey
+        )
+        self.opacity_hotkey_edit, self.opacity_hotkey_button, self.opacity_hotkey_row_widget = self._make_hotkey_row(
+            layout, "Hotkey: Sichtbarkeit 0 % / 100 %", "F4", self._register_opacity_hotkey
+        )
+
         engine_row = QHBoxLayout()
         self.path_edit = QLineEdit(os.environ.get("STOCKFISH_PATH", ""))
         self.path_edit.setPlaceholderText("Pfad zur Stockfish.exe")
@@ -465,45 +475,52 @@ class MainWindow(QMainWindow):
             vk = qt_key
         return modifiers, vk
 
-    def _register_best_move_hotkey(self) -> None:
-        if sys.platform != "win32":
-            return
-        parts = self._hotkey_parts(self.best_move_hotkey_edit.keySequence())
-        if parts is None:
-            self.status.setText("Bitte genau eine Tastenkombination für den besten Zug festlegen.")
-            return
-        if self._best_move_hotkey_registered:
-            ctypes.windll.user32.UnregisterHotKey(int(self.winId()), self._best_move_hotkey_id)
-            self._best_move_hotkey_registered = False
-        if ctypes.windll.user32.RegisterHotKey(int(self.winId()), self._best_move_hotkey_id, *parts):
-            self._best_move_hotkey_registered = True
-            self.status.setText("Hotkey für besten Zug gesetzt.")
-        else:
-            self.status.setText("Hotkey für besten Zug ist belegt oder ungültig.")
+    def _make_hotkey_row(self, layout, label: str, default: str, callback):
+        row = QHBoxLayout()
+        row.addWidget(QLabel(label))
+        edit = QKeySequenceEdit(QKeySequence(default))
+        edit.setMaximumWidth(170)
+        row.addWidget(edit)
+        button = QPushButton("Hotkey übernehmen")
+        button.clicked.connect(callback)
+        row.addWidget(button)
+        widget = QWidget()
+        widget.setLayout(row)
+        layout.addWidget(widget)
+        return edit, button, widget
 
+    def _apply_hotkey(self, edit, hotkey_id: int, attr: str, label: str) -> None:
+        if sys.platform != "win32":
+            self.status.setText("Globale Hotkeys sind nur unter Windows verfügbar.")
+            return
+        parts = self._hotkey_parts(edit.keySequence())
+        if parts is None:
+            self.status.setText(f"Bitte genau eine Tastenkombination für „{label}“ festlegen.")
+            return
+        if getattr(self, attr):
+            ctypes.windll.user32.UnregisterHotKey(int(self.winId()), hotkey_id)
+            setattr(self, attr, False)
+        if ctypes.windll.user32.RegisterHotKey(int(self.winId()), hotkey_id, *parts):
+            setattr(self, attr, True)
+            self.status.setText(f"Hotkey für „{label}“ gesetzt.")
+        else:
+            self.status.setText(f"Hotkey für „{label}“ ist bereits belegt oder ungültig.")
+
+    def _register_best_move_hotkey(self) -> None:
+        self._apply_hotkey(self.best_move_hotkey_edit, self._best_move_hotkey_id, "_best_move_hotkey_registered", "besten Zug ausführen")
 
     def _register_popup_hotkey(self) -> None:
-        if sys.platform != "win32":
-            return
-        if ctypes.windll.user32.RegisterHotKey(int(self.winId()), self._popup_hotkey_id, 0, 0x76):  # F7
-            self._popup_hotkey_registered = True
-        else:
-            self._popup_hotkey_registered = False
-            self.status.setText("F7 ist bereits belegt; Popup weiterhin über die Einstellungen steuerbar.")
+        self._apply_hotkey(self.popup_hotkey_edit, self._popup_hotkey_id, "_popup_hotkey_registered", "Spielfeld ein-/ausblenden")
+
+    def _register_back_hotkey(self) -> None:
+        self._apply_hotkey(self.back_hotkey_edit, self._back_hotkey_id, "_back_hotkey_registered", "letzten Zug zurücknehmen")
+
+    def _register_opacity_hotkey(self) -> None:
+        self._apply_hotkey(self.opacity_hotkey_edit, self._visibility_toggle_hotkey_id, "_visibility_toggle_hotkey_registered", "Sichtbarkeit umschalten")
 
     def _register_extra_hotkeys(self) -> None:
-        if sys.platform != "win32":
-            return
-        registrations = (
-            (self._back_hotkey_id, 0x75, "_back_hotkey_registered"),  # F6
-            (self._visibility_toggle_hotkey_id, 0x73, "_visibility_toggle_hotkey_registered"),  # F4
-        )
-        for hotkey_id, vk, attr in registrations:
-            if ctypes.windll.user32.RegisterHotKey(int(self.winId()), hotkey_id, 0, vk):
-                setattr(self, attr, True)
-            else:
-                setattr(self, attr, False)
-                self.status.setText(f"Hotkey konnte nicht registriert werden (Taste { 'F6' if vk == 0x75 else 'F4' } möglicherweise belegt).")
+        self._register_back_hotkey()
+        self._register_opacity_hotkey()
 
     def _toggle_board_opacity(self) -> None:
         self.opacity_slider.setValue(0 if self.opacity_slider.value() > 0 else 100)
@@ -515,38 +532,7 @@ class MainWindow(QMainWindow):
             self.status.setText("Kein legaler bester Zug verfügbar. Erst Stockfish starten/Analyse abwarten.")
 
     def _register_configured_hotkey(self) -> None:
-        if sys.platform != "win32":
-            self.status.setText("Globale Hotkeys sind nur unter Windows verfügbar.")
-            return
-        sequence = self.hotkey_edit.keySequence()
-        if sequence.isEmpty() or sequence.count() != 1:
-            self.status.setText("Bitte genau eine Tastenkombination festlegen.")
-            return
-        # In Qt 6, QKeySequence[i] returns QKeyCombination, not an int.
-        key = int(sequence[0].toCombined())
-        modifiers = 0
-        if key & Qt.KeyboardModifier.AltModifier.value:
-            modifiers |= 0x0001
-        if key & Qt.KeyboardModifier.ControlModifier.value:
-            modifiers |= 0x0002
-        if key & Qt.KeyboardModifier.ShiftModifier.value:
-            modifiers |= 0x0004
-        if key & Qt.KeyboardModifier.MetaModifier.value:
-            modifiers |= 0x0008
-        qt_key = key & 0x01FFFFFF
-        # Qt encodes function keys as 0x01000030+n; Win32 uses VK_F1..VK_F24.
-        if Qt.Key.Key_F1.value <= qt_key <= Qt.Key.Key_F24.value:
-            vk = 0x70 + (qt_key - Qt.Key.Key_F1.value)
-        else:
-            vk = qt_key
-        if self._hotkey_registered:
-            ctypes.windll.user32.UnregisterHotKey(int(self.winId()), self._hotkey_id)
-            self._hotkey_registered = False
-        if ctypes.windll.user32.RegisterHotKey(int(self.winId()), self._hotkey_id, modifiers, vk):
-            self._hotkey_registered = True
-            self.status.setText("Hotkey gesetzt: " + sequence.toString(QKeySequence.SequenceFormat.NativeText))
-        else:
-            self.status.setText("Hotkey belegt oder ungültig – bitte eine andere Kombination wählen.")
+        self._apply_hotkey(self.hotkey_edit, self._hotkey_id, "_hotkey_registered", "Trainingsmodus umschalten")
 
     def nativeEvent(self, event_type, message):
         if sys.platform == "win32":
@@ -610,13 +596,10 @@ class MainWindow(QMainWindow):
             self._mouse_listener.stop()
             self._mouse_listener = None
         if sys.platform == "win32":
-            if self._hotkey_registered:
-                ctypes.windll.user32.UnregisterHotKey(int(self.winId()), self._hotkey_id)
-            if self._best_move_hotkey_registered:
-                ctypes.windll.user32.UnregisterHotKey(int(self.winId()), self._best_move_hotkey_id)
-            if self._popup_hotkey_registered:
-                ctypes.windll.user32.UnregisterHotKey(int(self.winId()), self._popup_hotkey_id)
             for registered, hotkey_id in (
+                (self._hotkey_registered, self._hotkey_id),
+                (self._best_move_hotkey_registered, self._best_move_hotkey_id),
+                (self._popup_hotkey_registered, self._popup_hotkey_id),
                 (self._back_hotkey_registered, self._back_hotkey_id),
                 (self._visibility_toggle_hotkey_registered, self._visibility_toggle_hotkey_id),
             ):
