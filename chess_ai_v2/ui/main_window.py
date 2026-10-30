@@ -213,22 +213,32 @@ class MainWindow(QMainWindow):
             self.status.setText("Trainingsmodus AUS: Chess AI V2 direkt bedienen.")
 
     def _handle_mirrored_click(self, screen_x: int, screen_y: int, pressed: bool) -> None:
+        """Mirror the physical mouse down/up onto our board while Windows passes it through."""
         if not self._transparent_mode:
             return
+
+        # pynput reports physical screen pixels on Windows, while Qt widget
+        # coordinates are device-independent pixels. Convert for scaled displays.
+        dpr = float(self.devicePixelRatioF() or 1.0)
+        qt_x = round(screen_x / dpr)
+        qt_y = round(screen_y / dpr)
         origin = self.board.mapToGlobal(QPoint(0, 0))
-        local = QPoint(screen_x - origin.x(), screen_y - origin.y())
+        local = QPoint(qt_x - origin.x(), qt_y - origin.y())
         square = self.board.square_at(local)
-        if square is None:
-            if not pressed:
-                self._external_drag_start = None
-            return
+
         if pressed:
             self._external_drag_start = square
-            self.board.apply_external_click(square)
+            if square is not None:
+                self.board.apply_external_click(square)
             return
+
         start = self._external_drag_start
         self._external_drag_start = None
-        if start is not None and start != square:
+        if start is None or square is None:
+            return
+        if start != square:
+            # A drag is one down/up pair; apply the destination to the
+            # selection created on mouse-down.
             self.board.apply_external_click(square)
 
     def _register_configured_hotkey(self) -> None:
