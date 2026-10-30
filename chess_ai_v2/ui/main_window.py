@@ -58,7 +58,8 @@ class MainWindow(QMainWindow):
         layout.setContentsMargins(10, 10, 10, 10)
         layout.setSpacing(7)
 
-        header = QHBoxLayout()
+        self.header_widget = QWidget()
+        header = QHBoxLayout(self.header_widget)
         title = QLabel("CHESS AI <b>V2</b>")
         title.setTextFormat(Qt.TextFormat.RichText)
         title.setStyleSheet("font-size: 17px; letter-spacing: 1px;")
@@ -67,7 +68,7 @@ class MainWindow(QMainWindow):
         header.addWidget(title)
         header.addStretch()
         header.addWidget(self.status)
-        layout.addLayout(header)
+        layout.addWidget(self.header_widget)
 
         self.board_area = QWidget()
         self.board_area.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
@@ -245,11 +246,12 @@ class MainWindow(QMainWindow):
         dpr = float(self.devicePixelRatioF() or 1.0)
         rect = QRect(round(x/dpr), round(y/dpr), round(width/dpr), round(height/dpr))
         self._calibrated_region = rect
-        for widget in (self.size_row_widget, self.mode_controls_widget, self.controls_widget,
+        for widget in (self.header_widget, self.size_row_widget, self.mode_controls_widget, self.controls_widget,
                        self.best_label, self.pv_label, self.opacity_row_widget, self.mode_row_widget,
                        self.hotkey_row_widget, self.best_hotkey_row_widget, self.engine_row_widget,
                        self.region_button):
             widget.hide()
+        self.board_area.setContentsMargins(0, 0, 0, 0)
         self.board.setMinimumSize(80, 80)
         self.board.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self.setMinimumSize(80, 80)
