@@ -19,6 +19,7 @@ from chess_ai_v2.engine.worker import EngineWorker
 
 class MainWindow(QMainWindow):
     engine_position = Signal(str)
+    mirrored_click = Signal(int, int)
 
     def __init__(self) -> None:
         super().__init__()
@@ -29,6 +30,8 @@ class MainWindow(QMainWindow):
         self._transparent_mode = False
         self._hotkey_id = 41
         self._hotkey_registered = False
+        self._mouse_listener = None
+        self.mirrored_click.connect(self._handle_mirrored_click)
 
         self.setStyleSheet("""
             QMainWindow, QWidget { background: #17191f; color: #e9ebf0; font-family: Segoe UI; }
@@ -106,7 +109,7 @@ class MainWindow(QMainWindow):
         layout.addLayout(opacity_row)
 
         mode_row = QHBoxLayout()
-        self.pass_through = QCheckBox("Transparenzmodus: durch leere Flächen klicken")
+        self.pass_through = QCheckBox("Trainingsmodus: Klicks durchlassen und spiegeln")
         self.pass_through.toggled.connect(self._set_transparent_mode)
         mode_row.addWidget(self.pass_through)
         mode_row.addStretch()
@@ -164,17 +167,52 @@ class MainWindow(QMainWindow):
     def _set_transparent_mode(self, enabled: bool) -> None:
         self._transparent_mode = enabled
         if sys.platform != "win32":
-            self.status.setText("Der Klick-durch-Modus benötigt Windows.")
+            self.status.setText("Der Trainingsmodus benötigt Windows.")
             self.pass_through.blockSignals(True)
             self.pass_through.setChecked(False)
             self.pass_through.blockSignals(False)
             self._transparent_mode = False
             return
-        self.status.setText(
-            "Modus AN: leere Felder lassen Klicks durch; Figuren bleiben greifbar"
-            if enabled else "Modus AUS: das ganze Brett ist bedienbar"
-        )
-        self.winId()
+
+        hwnd = int(self.winId())
+        GWL_EXSTYLE = -20
+        WS_EX_LAYERED = 0x00080000
+        WS_EX_TRANSPARENT = 0x00000020
+        get_style = ctypes.windll.user32.GetWindowLongPtrW
+        set_style = ctypes.windll.user32.SetWindowLongPtrW
+        style = get_style(hwnd, GWL_EXSTYLE)
+        if enabled:
+            set_style(hwnd, GWL_EXSTYLE, style | WS_EX_LAYERED | WS_EX_TRANSPARENT)
+            try:
+                from pynput import mouse
+                def on_click(x, y, button, pressed):
+                    if pressed and button == mouse.Button.left:
+                        self.mirrored_click.emit(int(x), int(y))
+                self._mouse_listener = mouse.Listener(on_click=on_click)
+                self._mouse_listener.start()
+                self.status.setText("Trainingsmodus AN: Klicks werden gespiegelt. F8 beendet den Modus.")
+            except Exception as exc:
+                set_style(hwnd, GWL_EXSTYLE, style & ~WS_EX_TRANSPARENT)
+                self._transparent_mode = False
+                self.pass_through.blockSignals(True)
+                self.pass_through.setChecked(False)
+                self.pass_through.blockSignals(False)
+                self.status.setText(f"Mauseingabe konnte nicht gestartet werden: {exc}")
+        else:
+            set_style(hwnd, GWL_EXSTYLE, style & ~WS_EX_TRANSPARENT)
+            if self._mouse_listener is not None:
+                self._mouse_listener.stop()
+                self._mouse_listener = None
+            self.status.setText("Trainingsmodus AUS: Chess AI V2 direkt bedienen.")
+
+    def _handle_mirrored_click(self, screen_x: int, screen_y: int) -> None:
+        if not self._transparent_mode:
+            return
+        origin = self.board.mapToGlobal(QPoint(0, 0))
+        local = QPoint(screen_x - origin.x(), screen_y - origin.y())
+        square = self.board.square_at(local)
+        if square is not None:
+            self.board.apply_external_click(square)
 
     def _register_configured_hotkey(self) -> None:
         if sys.platform != "win32":
@@ -263,6 +301,9 @@ class MainWindow(QMainWindow):
         self.pv_label.setText(f"Variantenfolge: {pv}")
 
     def closeEvent(self, event) -> None:
+        if self._mouse_listener is not None:
+            self._mouse_listener.stop()
+            self._mouse_listener = None
         if self._hotkey_registered and sys.platform == "win32":
             ctypes.windll.user32.UnregisterHotKey(int(self.winId()), self._hotkey_id)
         if self._worker is not None:
