@@ -164,11 +164,11 @@ class MainWindow(QMainWindow):
         sidebar_layout.addWidget(brand)
         self._category_buttons = []
         for category, symbol in (
-            ("Alle", "⌂"), ("Engine", "⚙"), ("Analyse", "⌁"),
-            ("Spielfeld", "▦"), ("Training", "◎"), ("Steuerung", "⌨"),
-            ("Darstellung", "◐"), ("Allgemein", "⋯"),
+            ("Alle", "⌂"), ("Engine", "⚙"),
+            ("Spielfeld", "▦"), ("Steuerung", "⌨"),
         ):
             button = QPushButton(f"{symbol}   {category}")
+            button.setProperty("category", category)
             button.setCheckable(True)
             button.setChecked(category == "Alle")
             button.setStyleSheet(
@@ -224,18 +224,6 @@ class MainWindow(QMainWindow):
         self.board_toggle_button = QPushButton("Spielfeld anzeigen")
         self.board_toggle_button.clicked.connect(self._toggle_board_visibility)
         layout.addWidget(self.board_toggle_button)
-
-        self.size_row_widget = QWidget()
-        size_row = QHBoxLayout(self.size_row_widget)
-        size_row.addWidget(QLabel("Max. Brettgröße"))
-        self.board_size_value = QLabel("520 px")
-        self.board_size_slider = QSlider(Qt.Orientation.Horizontal)
-        self.board_size_slider.setRange(160, 1000)
-        self.board_size_slider.setValue(520)
-        self.board_size_slider.valueChanged.connect(self._fit_board)
-        size_row.addWidget(self.board_size_slider, 1)
-        size_row.addWidget(self.board_size_value)
-        layout.addWidget(self.size_row_widget)
 
         self.mode_controls_widget = QWidget()
         mode_controls = QHBoxLayout(self.mode_controls_widget)
@@ -349,11 +337,10 @@ class MainWindow(QMainWindow):
         self._setting_widgets = [
             ("Engine", self.engine_row_widget),
             ("Spielfeld", self.board_toggle_button),
-            ("Spielfeld", self.size_row_widget),
             ("Spielfeld", self.mode_controls_widget),
             ("Spielfeld", self.controls_widget),
-            ("Darstellung", self.opacity_row_widget),
-            ("Training", self.mode_row_widget),
+            ("Spielfeld", self.opacity_row_widget),
+            ("Steuerung", self.mode_row_widget),
             ("Steuerung", self.hotkey_row_widget),
             ("Steuerung", self.best_hotkey_row_widget),
             ("Steuerung", self.popup_hotkey_row_widget),
@@ -408,7 +395,7 @@ class MainWindow(QMainWindow):
     def _select_category(self, category: str) -> None:
         self._active_category = category
         for button in self._category_buttons:
-            button.setChecked(button.text() == category)
+            button.setChecked(button.property("category") == category)
         self._filter_settings()
 
     def _filter_settings(self, _query: str = "") -> None:
@@ -416,7 +403,7 @@ class MainWindow(QMainWindow):
         if query:
             self._active_category = "Alle"
             for button in self._category_buttons:
-                button.setChecked(button.text() == "Alle")
+                button.setChecked(button.property("category") == "Alle")
         for category, widget in self._setting_widgets:
             searchable = category + " " + " ".join(
                 child.text() for child in widget.findChildren(QWidget)
@@ -431,7 +418,6 @@ class MainWindow(QMainWindow):
         self.path_edit.setText(store.value("engine/path", self.path_edit.text(), type=str))
         self.depth.setValue(store.value("engine/depth", 15, type=int))
         self.arrow_count.setValue(store.value("engine/arrow_count", 3, type=int))
-        self.board_size_slider.setValue(store.value("board/size", 520, type=int))
         self.opacity_slider.setValue(store.value("display/opacity", 100, type=int))
         self.free_move_check.setChecked(store.value("board/free_move", False, type=bool))
         self.pass_through.setChecked(False)
@@ -450,7 +436,6 @@ class MainWindow(QMainWindow):
             ("engine/path", self.path_edit.text().strip()),
             ("engine/depth", self.depth.value()),
             ("engine/arrow_count", self.arrow_count.value()),
-            ("board/size", self.board_size_slider.value()),
             ("display/opacity", self.opacity_slider.value()),
             ("board/free_move", self.free_move_check.isChecked()),
             ("hotkeys/training", self.hotkey_edit.keySequence().toString()),
@@ -522,11 +507,10 @@ class MainWindow(QMainWindow):
         self._fit_board()
 
     def _fit_board(self, _value: int = 0) -> None:
-        if not all(hasattr(self, name) for name in ("board", "board_area", "board_size_slider", "board_size_value")):
+        if not all(hasattr(self, name) for name in ("board", "board_area")):
             return
-        # Das Brett liegt im separaten Popup. Die versteckte Layout-Fläche
-        # der Settings darf seine Größe daher nicht auf 80 px reduzieren.
-        size = self.board_size_slider.value()
+        # Feste Standardgröße; die manuelle Brettmarkierung kann sie überschreiben.
+        size = 520
         if self._calibrated_region is not None:
             size = min(self._calibrated_region.width(), self._calibrated_region.height())
         size = max(160, size)
@@ -534,7 +518,6 @@ class MainWindow(QMainWindow):
         self.board.setMaximumSize(16777215, 16777215)
         if hasattr(self, "board_popup") and self.board_popup.isVisible() and self._calibrated_region is None:
             self.board_popup.resize(size, size)
-        self.board_size_value.setText(f"{size} px")
 
     def _start_region_selection(self) -> None:
         if sys.platform != "win32":
