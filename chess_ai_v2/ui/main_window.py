@@ -68,26 +68,14 @@ class BoardPopup(QMainWindow):
         super().__init__(parent)
         self.setWindowTitle("Chess AI V2 – Schachbrett")
         self.setWindowFlags(Qt.WindowType.Window | Qt.WindowType.WindowStaysOnTopHint)
-        self.resize(620, 700)
-        root = QWidget()
-        self.setCentralWidget(root)
-        layout = QVBoxLayout(root)
-        layout.setContentsMargins(10, 10, 10, 10)
-        toolbar = QHBoxLayout()
-        for label, callback in (("↶ Zurück", board.undo), ("Reset", board.reset), ("Flip", board.flip)):
-            button = QPushButton(label)
-            button.clicked.connect(callback)
-            toolbar.addWidget(button)
-        layout.addLayout(toolbar)
-        self.best_label = QLabel("Bester Zug: –")
-        layout.addWidget(self.best_label)
-        self.pv_label = QLabel("Warte auf Engine-Analyse …")
-        self.pv_label.setWordWrap(True)
-        layout.addWidget(self.pv_label)
-        board.setParent(root)
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
+        self.resize(560, 560)
+        board.setParent(self)
+        board.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
+        board.setStyleSheet("background: transparent;")
         board.setMinimumSize(160, 160)
         board.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
-        layout.addWidget(board, 1)
+        self.setCentralWidget(board)
         self.board = board
 
 
@@ -202,8 +190,8 @@ class MainWindow(QMainWindow):
             controls.addWidget(button)
         layout.addWidget(self.controls_widget)
         self.controls_widget.hide()
-        self.best_label = self.board_popup.best_label
-        self.pv_label = self.board_popup.pv_label
+        self.best_label = QLabel("Bester Zug: –")
+        self.pv_label = QLabel("Warte auf Engine-Analyse …")
 
         opacity_row = QHBoxLayout()
         opacity_row.addWidget(QLabel("Brett-Sichtbarkeit"))
@@ -318,8 +306,7 @@ class MainWindow(QMainWindow):
             self.show()
             self.status.setText("Bitte möglichst genau das quadratische Schachbrett markieren.")
             return
-        dpr = float(self.devicePixelRatioF() or 1.0)
-        rect = QRect(round(x/dpr), round(y/dpr), round(width/dpr), round(height/dpr))
+        rect = QRect(x, y, width, height)
         self._calibrated_region = rect
         # Keep the settings available in the scrollable panel after calibration.
         size = min(rect.width(), rect.height())
@@ -358,7 +345,7 @@ class MainWindow(QMainWindow):
             self._transparent_mode = False
             return
 
-        hwnd = int(self.winId())
+        hwnd = int(self.board_popup.winId())
         GWL_EXSTYLE = -20
         WS_EX_LAYERED = 0x00080000
         WS_EX_TRANSPARENT = 0x00000020
@@ -371,7 +358,6 @@ class MainWindow(QMainWindow):
         style = get_style(hwnd, GWL_EXSTYLE)
         if enabled:
             set_style(hwnd, GWL_EXSTYLE, style | WS_EX_LAYERED | WS_EX_TRANSPARENT)
-            ctypes.windll.user32.SetLayeredWindowAttributes(hwnd, 0, 150, 0x00000002)
             try:
                 from pynput import mouse
                 def on_click(x, y, button, pressed):
@@ -388,7 +374,6 @@ class MainWindow(QMainWindow):
                 self.pass_through.blockSignals(False)
                 self.status.setText(f"Mauseingabe konnte nicht gestartet werden: {exc}")
         else:
-            ctypes.windll.user32.SetLayeredWindowAttributes(hwnd, 0, 255, 0x00000002)
             set_style(hwnd, GWL_EXSTYLE, style & ~WS_EX_TRANSPARENT)
             if self._mouse_listener is not None:
                 self._mouse_listener.stop()
@@ -546,6 +531,7 @@ class MainWindow(QMainWindow):
             san = uci
         self.best_label.setText(f"Bester Zug: {san}  ·  Bewertung: {score}")
         self.pv_label.setText(f"Variantenfolge: {pv}")
+        self.board_popup.setWindowTitle(f"Chess AI V2 – {san} ({score})")
 
     def closeEvent(self, event) -> None:
         if self._mouse_listener is not None:
