@@ -11,6 +11,7 @@ requires-python = ">=3.11"
 dependencies = [
   "PySide6>=6.7",
   "python-chess>=1.999",
+  "pynput>=1.7.7",
 ]
 
 [project.optional-dependencies]
