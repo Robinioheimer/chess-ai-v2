@@ -4,6 +4,7 @@ import os
 import sys
 import ctypes
 import json
+import shutil
 from ctypes import wintypes
 
 from PySide6.QtCore import Qt, QThread, Signal, QPoint, QRect
@@ -12,7 +13,7 @@ from PySide6.QtGui import QKeySequence
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QSlider, QLineEdit, QSpinBox, QCheckBox, QFileDialog, QKeySequenceEdit,
-    QSizePolicy, QScrollArea
+    QSizePolicy, QScrollArea, QSettings, QInputDialog
 )
 
 from chess_ai_v2.ui.board_widget import BoardWidget
@@ -95,6 +96,7 @@ class MainWindow(QMainWindow):
 
     def __init__(self) -> None:
         super().__init__()
+        self.settings_store = QSettings("RobinDarian", "ChessAIV2")
         self.setWindowTitle("Chess AI V2")
         self.setWindowFlags(Qt.WindowType.Window | Qt.WindowType.WindowStaysOnTopHint)
         # The settings window adapts to the actual usable monitor area.
@@ -282,6 +284,8 @@ class MainWindow(QMainWindow):
         self.path_edit.setPlaceholderText("Pfad zur Stockfish.exe")
         self.browse_button = QPushButton("Durchsuchen …")
         self.browse_button.clicked.connect(self._browse_stockfish)
+        self.auto_find_button = QPushButton("Automatisch finden")
+        self.auto_find_button.clicked.connect(self._auto_find_stockfish)
         self.depth = QSpinBox()
         self.depth.setRange(5, 30)
         self.depth.setValue(15)
@@ -296,6 +300,7 @@ class MainWindow(QMainWindow):
         self.start_button.clicked.connect(self._start_engine)
         engine_row.addWidget(self.path_edit, 1)
         engine_row.addWidget(self.browse_button)
+        engine_row.addWidget(self.auto_find_button)
         engine_row.addWidget(QLabel("Tiefe"))
         engine_row.addWidget(self.depth)
         engine_row.addWidget(self.start_button)
@@ -308,12 +313,16 @@ class MainWindow(QMainWindow):
         layout.addWidget(self.region_button)
 
         self.board.position_changed.connect(self.engine_position.emit)
+        self._load_settings()
+        self._connect_setting_persistence()
         self._thread: QThread | None = None
         self._worker: EngineWorker | None = None
         self._register_configured_hotkey()
         self._register_best_move_hotkey()
         self._register_popup_hotkey()
         self._register_extra_hotkeys()
+        if not self.path_edit.text().strip():
+            self._auto_find_stockfish(silent=True)
 
         screen = self.screen()
         if screen is not None:
@@ -327,6 +336,97 @@ class MainWindow(QMainWindow):
             )
         else:
             self.resize(560, 680)
+
+    def _load_settings(self) -> None:
+        store = self.settings_store
+        self.path_edit.setText(store.value("engine/path", self.path_edit.text(), type=str))
+        self.depth.setValue(store.value("engine/depth", 15, type=int))
+        self.arrow_count.setValue(store.value("engine/arrow_count", 3, type=int))
+        self.board_size_slider.setValue(store.value("board/size", 520, type=int))
+        self.opacity_slider.setValue(store.value("display/opacity", 100, type=int))
+        self.free_move_check.setChecked(store.value("board/free_move", False, type=bool))
+        self.pass_through.setChecked(False)
+        for key, edit in (
+            ("hotkeys/training", self.hotkey_edit),
+            ("hotkeys/best_move", self.best_move_hotkey_edit),
+            ("hotkeys/popup", self.popup_hotkey_edit),
+            ("hotkeys/back", self.back_hotkey_edit),
+            ("hotkeys/opacity", self.opacity_hotkey_edit),
+        ):
+            edit.setKeySequence(QKeySequence(store.value(key, edit.keySequence().toString(), type=str)))
+
+    def _save_settings(self) -> None:
+        store = self.settings_store
+        values = (
+            ("engine/path", self.path_edit.text().strip()),
+            ("engine/depth", self.depth.value()),
+            ("engine/arrow_count", self.arrow_count.value()),
+            ("board/size", self.board_size_slider.value()),
+            ("display/opacity", self.opacity_slider.value()),
+            ("board/free_move", self.free_move_check.isChecked()),
+            ("hotkeys/training", self.hotkey_edit.keySequence().toString()),
+            ("hotkeys/best_move", self.best_move_hotkey_edit.keySequence().toString()),
+            ("hotkeys/popup", self.popup_hotkey_edit.keySequence().toString()),
+            ("hotkeys/back", self.back_hotkey_edit.keySequence().toString()),
+            ("hotkeys/opacity", self.opacity_hotkey_edit.keySequence().toString()),
+        )
+        for key, value in values:
+            store.setValue(key, value)
+        store.sync()
+
+    def _connect_setting_persistence(self) -> None:
+        self.path_edit.textChanged.connect(self._save_settings)
+        self.depth.valueChanged.connect(self._save_settings)
+        self.arrow_count.valueChanged.connect(self._save_settings)
+        self.board_size_slider.valueChanged.connect(self._save_settings)
+        self.opacity_slider.valueChanged.connect(self._save_settings)
+        self.free_move_check.toggled.connect(self._save_settings)
+        for edit in (self.hotkey_edit, self.best_move_hotkey_edit, self.popup_hotkey_edit,
+                     self.back_hotkey_edit, self.opacity_hotkey_edit):
+            edit.keySequenceChanged.connect(self._save_settings)
+
+    def _find_stockfish_candidates(self) -> list[str]:
+        candidates: list[str] = []
+        seen: set[str] = set()
+        def add(path: str) -> None:
+            full = os.path.abspath(os.path.expandvars(path))
+            if os.path.isfile(full) and os.path.basename(full).lower() in {"stockfish.exe", "stockfish"}:
+                norm = os.path.normcase(full)
+                if norm not in seen:
+                    seen.add(norm)
+                    candidates.append(full)
+        for value in (os.environ.get("STOCKFISH_PATH", ""), shutil.which("stockfish"), shutil.which("stockfish.exe")):
+            if value:
+                add(value)
+        roots = [os.environ.get("ProgramFiles", ""), os.environ.get("ProgramFiles(x86)", ""),
+                 os.path.join(os.path.expanduser("~"), "Downloads"),
+                 os.path.join(os.path.expanduser("~"), "Documents")]
+        for root in roots:
+            if not root or not os.path.isdir(root):
+                continue
+            for current, dirs, files in os.walk(root):
+                dirs[:] = [d for d in dirs if d.lower() not in {"windows", "node_modules", ".git", ".venv", "venv", "__pycache__"}]
+                match = next((name for name in files if name.lower() == "stockfish.exe"), None)
+                if match:
+                    add(os.path.join(current, match))
+                    if len(candidates) >= 12:
+                        return candidates
+        return candidates
+
+    def _auto_find_stockfish(self, silent: bool = False) -> None:
+        candidates = self._find_stockfish_candidates()
+        if not candidates:
+            if not silent:
+                self.status.setText("Stockfish nicht automatisch gefunden. Bitte manuell auswählen.")
+            return
+        if len(candidates) == 1:
+            selected = candidates[0]
+        else:
+            selected, ok = QInputDialog.getItem(self, "Stockfish gefunden", "Gefundene Stockfish-Version:", candidates, 0, False)
+            if not ok or not selected:
+                return
+        self.path_edit.setText(selected)
+        self.status.setText("Stockfish gefunden: " + selected)
 
     def resizeEvent(self, event) -> None:
         super().resizeEvent(event)
@@ -618,7 +718,7 @@ class MainWindow(QMainWindow):
     def _on_candidate_moves(self, payload: str) -> None:
         try:
             data = json.loads(payload)
-            self.board.set_candidate_moves([(item["uci"], item["percent"]) for item in data[:self.arrow_count.value()]])
+            self.board.set_candidate_moves([(item["uci"], item["score"]) for item in data[:self.arrow_count.value()]])
         except (ValueError, KeyError, TypeError):
             self.board.set_candidate_moves([])
 
@@ -634,6 +734,7 @@ class MainWindow(QMainWindow):
         self.board_popup.setWindowTitle(f"Chess AI V2 – {san} ({score})")
 
     def closeEvent(self, event) -> None:
+        self._save_settings()
         if self._mouse_listener is not None:
             self._mouse_listener.stop()
             self._mouse_listener = None
