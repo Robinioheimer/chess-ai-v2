@@ -91,6 +91,7 @@ class MainWindow(QMainWindow):
     engine_position = Signal(str)
     mirrored_click = Signal(int, int, bool)
     region_selected = Signal(int, int, int, int)
+    analysis_multipv_changed = Signal(int)
 
     def __init__(self) -> None:
         super().__init__()
@@ -289,6 +290,7 @@ class MainWindow(QMainWindow):
         self.arrow_count.setRange(1, 3)
         self.arrow_count.setValue(3)
         self.arrow_count.setToolTip("Anzahl der angezeigten Engine-Varianten")
+        self.arrow_count.valueChanged.connect(self.analysis_multipv_changed.emit)
         engine_row.addWidget(self.arrow_count)
         self.start_button = QPushButton("Stockfish starten")
         self.start_button.clicked.connect(self._start_engine)
@@ -608,6 +610,7 @@ class MainWindow(QMainWindow):
         self._worker.status.connect(self.status.setText)
         self._worker.failed.connect(self.status.setText)
         self._worker.best_move.connect(self._on_best_move)
+        self.analysis_multipv_changed.connect(self._worker.set_multipv)
         self._worker.candidate_moves.connect(self._on_candidate_moves)
         self._thread.start()
         self.start_button.setEnabled(False)
