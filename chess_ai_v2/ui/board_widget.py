@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import chess
 from PySide6.QtCore import Qt, Signal, QRectF, QPointF
-from PySide6.QtGui import QColor, QPainter, QPen, QBrush, QFont
+from PySide6.QtGui import QColor, QPainter, QPen, QFont, QPolygonF
 from PySide6.QtWidgets import QWidget
 
 
@@ -135,8 +135,18 @@ class BoardWidget(QWidget):
                 if piece:
                     glyph = PIECES[piece.symbol()]
                     painter.setFont(QFont("Segoe UI Symbol", int(cell*0.72)))
-                    painter.setPen(QColor("#FFFFFF" if piece.color else "#202020"))
-                    painter.drawText(rect, Qt.AlignmentFlag.AlignCenter, glyph)
+                    if piece.color:
+                        # Dark outline keeps white pieces visible on light squares.
+                        painter.setPen(QPen(QColor("#20242b"), max(2, int(cell * 0.055))))
+                        painter.drawText(rect.translated(0, 1), Qt.AlignmentFlag.AlignCenter, glyph)
+                        painter.setPen(QPen(QColor("#fffdf4"), 0))
+                        painter.drawText(rect, Qt.AlignmentFlag.AlignCenter, glyph)
+                    else:
+                        # A light outline separates black pieces from dark squares.
+                        painter.setPen(QPen(QColor("#f5f0e6"), max(2, int(cell * 0.045))))
+                        painter.drawText(rect.translated(0, 1), Qt.AlignmentFlag.AlignCenter, glyph)
+                        painter.setPen(QPen(QColor("#17191f"), 0))
+                        painter.drawText(rect, Qt.AlignmentFlag.AlignCenter, glyph)
         if self.best_move:
             for sq in (self.best_move.from_square, self.best_move.to_square):
                 file_, rank = chess.square_file(sq), chess.square_rank(sq)
@@ -145,5 +155,20 @@ class BoardWidget(QWidget):
                 painter.setPen(QPen(QColor("#E5B93F"), max(2, int(cell*0.045))))
                 painter.drawRect(QRectF(x0 + col*cell+2, y0 + row*cell+2, cell-4, cell-4))
             a, b = self._center(self.best_move.from_square, x0, y0, cell), self._center(self.best_move.to_square, x0, y0, cell)
-            painter.setPen(QPen(QColor("#E5B93F"), max(3, int(cell*0.055)), Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
-            painter.drawLine(a, b)
+            # Draw a clear directional arrow, not just a line.
+            dx, dy = b.x() - a.x(), b.y() - a.y()
+            length = (dx * dx + dy * dy) ** 0.5
+            if length > 0:
+                ux, uy = dx / length, dy / length
+                head_len = cell * 0.24
+                half_width = cell * 0.12
+                tip = b
+                base = QPointF(b.x() - ux * head_len, b.y() - uy * head_len)
+                left = QPointF(base.x() - uy * half_width, base.y() + ux * half_width)
+                right = QPointF(base.x() + uy * half_width, base.y() - ux * half_width)
+                shaft_end = QPointF(b.x() - ux * head_len * 0.72, b.y() - uy * head_len * 0.72)
+                painter.setPen(QPen(QColor("#6b4b00"), max(5, int(cell * 0.085)), Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
+                painter.drawLine(a, shaft_end)
+                painter.setPen(Qt.PenStyle.NoPen)
+                painter.setBrush(QColor("#E5B93F"))
+                painter.drawPolygon(QPolygonF([tip, left, right]))
