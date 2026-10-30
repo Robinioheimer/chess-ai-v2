@@ -5,7 +5,7 @@ import sys
 import ctypes
 from ctypes import wintypes
 
-from PySide6.QtCore import Qt, QThread, Signal, QPoint
+from PySide6.QtCore import Qt, QThread, Signal, QPoint, QRect
 from PySide6.QtGui import QKeySequence
 from PySide6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
@@ -20,6 +20,7 @@ from chess_ai_v2.engine.worker import EngineWorker
 class MainWindow(QMainWindow):
     engine_position = Signal(str)
     mirrored_click = Signal(int, int, bool)
+    region_selected = Signal(int, int, int, int)
 
     def __init__(self) -> None:
         super().__init__()
@@ -33,8 +34,12 @@ class MainWindow(QMainWindow):
         self._hotkey_registered = False
         self._best_move_hotkey_registered = False
         self._mouse_listener = None
+        self._selection_listener = None
+        self._selection_start = None
+        self._calibrated_region = None
         self._external_drag_start = None
         self.mirrored_click.connect(self._handle_mirrored_click)
+        self.region_selected.connect(self._apply_selected_region)
 
         self.setStyleSheet("""
             QMainWindow, QWidget { background: #17191f; color: #e9ebf0; font-family: Segoe UI; }
@@ -46,6 +51,8 @@ class MainWindow(QMainWindow):
         """)
 
         root = QWidget()
+        root.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
+        root.setStyleSheet("background: transparent;")
         self.setCentralWidget(root)
         layout = QVBoxLayout(root)
         layout.setContentsMargins(10, 10, 10, 10)
@@ -63,6 +70,8 @@ class MainWindow(QMainWindow):
         layout.addLayout(header)
 
         self.board_area = QWidget()
+        self.board_area.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
+        self.board_area.setStyleSheet("background: transparent;")
         self.board_area.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         board_layout = QHBoxLayout(self.board_area)
         board_layout.setContentsMargins(0, 0, 0, 0)
@@ -74,7 +83,8 @@ class MainWindow(QMainWindow):
         board_layout.addStretch(1)
         layout.addWidget(self.board_area, 1)
 
-        size_row = QHBoxLayout()
+        self.size_row_widget = QWidget()
+        size_row = QHBoxLayout(self.size_row_widget)
         size_row.addWidget(QLabel("Max. Brettgröße"))
         self.board_size_value = QLabel("520 px")
         self.board_size_slider = QSlider(Qt.Orientation.Horizontal)
@@ -83,21 +93,23 @@ class MainWindow(QMainWindow):
         self.board_size_slider.valueChanged.connect(self._fit_board)
         size_row.addWidget(self.board_size_slider, 1)
         size_row.addWidget(self.board_size_value)
-        layout.addLayout(size_row)
+        layout.addWidget(self.size_row_widget)
 
-        mode_controls = QHBoxLayout()
+        self.mode_controls_widget = QWidget()
+        mode_controls = QHBoxLayout(self.mode_controls_widget)
         self.free_move_check = QCheckBox("Freies Bewegen (jede Figur auf jedes Feld)")
         self.free_move_check.toggled.connect(self.board.set_free_move_mode)
         mode_controls.addWidget(self.free_move_check)
         mode_controls.addStretch()
-        layout.addLayout(mode_controls)
+        layout.addWidget(self.mode_controls_widget)
 
-        controls = QHBoxLayout()
+        self.controls_widget = QWidget()
+        controls = QHBoxLayout(self.controls_widget)
         for label, callback in (("↶", self.board.undo), ("Reset", self.board.reset), ("Flip", self.board.flip)):
             button = QPushButton(label)
             button.clicked.connect(callback)
             controls.addWidget(button)
-        layout.addLayout(controls)
+        layout.addWidget(self.controls_widget)
 
         self.best_label = QLabel("Bester Zug: –")
         self.best_label.setStyleSheet("font-size: 14px; font-weight: 600;")
@@ -108,22 +120,27 @@ class MainWindow(QMainWindow):
         layout.addWidget(self.pv_label)
 
         opacity_row = QHBoxLayout()
-        opacity_row.addWidget(QLabel("Fenster-Deckkraft"))
+        opacity_row.addWidget(QLabel("Brett-Sichtbarkeit"))
         self.opacity_value = QLabel("100 %")
         self.opacity_slider = QSlider(Qt.Orientation.Horizontal)
-        self.opacity_slider.setRange(20, 100)
+        self.opacity_slider.setRange(0, 100)
         self.opacity_slider.setValue(100)
         self.opacity_slider.valueChanged.connect(self._set_opacity)
+        self.board.set_visual_opacity(100)
         opacity_row.addWidget(self.opacity_slider, 1)
         opacity_row.addWidget(self.opacity_value)
-        layout.addLayout(opacity_row)
+        self.opacity_row_widget = QWidget()
+        self.opacity_row_widget.setLayout(opacity_row)
+        layout.addWidget(self.opacity_row_widget)
 
         mode_row = QHBoxLayout()
         self.pass_through = QCheckBox("Trainingsmodus: Klicks durchlassen und spiegeln")
         self.pass_through.toggled.connect(self._set_transparent_mode)
         mode_row.addWidget(self.pass_through)
         mode_row.addStretch()
-        layout.addLayout(mode_row)
+        self.mode_row_widget = QWidget()
+        self.mode_row_widget.setLayout(mode_row)
+        layout.addWidget(self.mode_row_widget)
 
         hotkey_row = QHBoxLayout()
         hotkey_row.addWidget(QLabel("Hotkey für Modus"))
@@ -133,7 +150,9 @@ class MainWindow(QMainWindow):
         self.hotkey_button = QPushButton("Hotkey übernehmen")
         self.hotkey_button.clicked.connect(self._register_configured_hotkey)
         hotkey_row.addWidget(self.hotkey_button)
-        layout.addLayout(hotkey_row)
+        self.hotkey_row_widget = QWidget()
+        self.hotkey_row_widget.setLayout(hotkey_row)
+        layout.addWidget(self.hotkey_row_widget)
 
         best_hotkey_row = QHBoxLayout()
         best_hotkey_row.addWidget(QLabel("Hotkey: besten Zug ausführen"))
@@ -143,7 +162,9 @@ class MainWindow(QMainWindow):
         self.best_move_hotkey_button = QPushButton("Hotkey übernehmen")
         self.best_move_hotkey_button.clicked.connect(self._register_best_move_hotkey)
         best_hotkey_row.addWidget(self.best_move_hotkey_button)
-        layout.addLayout(best_hotkey_row)
+        self.best_hotkey_row_widget = QWidget()
+        self.best_hotkey_row_widget.setLayout(best_hotkey_row)
+        layout.addWidget(self.best_hotkey_row_widget)
 
         engine_row = QHBoxLayout()
         self.path_edit = QLineEdit(os.environ.get("STOCKFISH_PATH", ""))
@@ -160,7 +181,13 @@ class MainWindow(QMainWindow):
         engine_row.addWidget(QLabel("Tiefe"))
         engine_row.addWidget(self.depth)
         engine_row.addWidget(self.start_button)
-        layout.addLayout(engine_row)
+        self.engine_row_widget = QWidget()
+        self.engine_row_widget.setLayout(engine_row)
+        layout.addWidget(self.engine_row_widget)
+
+        self.region_button = QPushButton("Spielfeldbereich auswählen")
+        self.region_button.clicked.connect(self._start_region_selection)
+        layout.addWidget(self.region_button)
 
         self.board.position_changed.connect(self.engine_position.emit)
         self._thread: QThread | None = None
@@ -176,13 +203,64 @@ class MainWindow(QMainWindow):
         if not hasattr(self, "board"):
             return
         area = self.board_area.contentsRect()
-        available = max(160, min(area.width(), area.height()))
-        size = min(self.board_size_slider.value(), available)
-        self.board.setFixedSize(size, size)
-        self.board_size_value.setText(f"{size} px")
+        available = max(80, min(area.width(), area.height()))
+        if self._calibrated_region is not None:
+            self.board.setFixedSize(available, available)
+        else:
+            size = min(self.board_size_slider.value(), available)
+            self.board.setFixedSize(size, size)
+            self.board_size_value.setText(f"{size} px")
+
+    def _start_region_selection(self) -> None:
+        if sys.platform != "win32":
+            self.status.setText("Bereichsauswahl benötigt Windows.")
+            return
+        try:
+            from pynput import mouse
+            self._selection_start = None
+            self.hide()
+            self.status.setText("Ziehe einen Rahmen um das Schachbrett.")
+            def on_click(x, y, button, pressed):
+                if button != mouse.Button.left:
+                    return
+                if pressed:
+                    self._selection_start = (int(x), int(y))
+                elif self._selection_start is not None:
+                    x0, y0 = self._selection_start
+                    x1, y1 = int(x), int(y)
+                    self._selection_listener.stop()
+                    self.region_selected.emit(min(x0, x1), min(y0, y1), abs(x1-x0), abs(y1-y0))
+                    return False
+            self._selection_listener = mouse.Listener(on_click=on_click)
+            self._selection_listener.start()
+        except Exception as exc:
+            self.show()
+            self.status.setText(f"Bereichsauswahl fehlgeschlagen: {exc}")
+
+    def _apply_selected_region(self, x: int, y: int, width: int, height: int) -> None:
+        if width < 80 or height < 80 or abs(width-height) > max(width, height) * 0.12:
+            self.show()
+            self.status.setText("Bitte möglichst genau das quadratische Schachbrett markieren.")
+            return
+        dpr = float(self.devicePixelRatioF() or 1.0)
+        rect = QRect(round(x/dpr), round(y/dpr), round(width/dpr), round(height/dpr))
+        self._calibrated_region = rect
+        for widget in (self.size_row_widget, self.mode_controls_widget, self.controls_widget,
+                       self.best_label, self.pv_label, self.opacity_row_widget, self.mode_row_widget,
+                       self.hotkey_row_widget, self.best_hotkey_row_widget, self.engine_row_widget,
+                       self.region_button):
+            widget.hide()
+        self.board.setMinimumSize(80, 80)
+        self.board.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        self.setMinimumSize(80, 80)
+        self.setMaximumSize(4096, 4096)
+        self.setGeometry(rect)
+        self.show()
+        self.raise_()
+        self.status.setText("Spielfeldbereich übernommen. Einstellungen über erneute Bereichsauswahl/Zurücksetzen verfügbar.")
 
     def _set_opacity(self, value: int) -> None:
-        self.setWindowOpacity(value / 100)
+        self.board.set_visual_opacity(value)
         self.opacity_value.setText(f"{value} %")
 
     def _set_transparent_mode(self, enabled: bool) -> None:
