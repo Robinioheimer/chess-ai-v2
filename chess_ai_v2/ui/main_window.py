@@ -67,12 +67,14 @@ class BoardPopup(QMainWindow):
     def __init__(self, board: BoardWidget, parent=None) -> None:
         super().__init__(parent)
         self.setWindowTitle("Chess AI V2 – Schachbrett")
-        self.setWindowFlags(Qt.WindowType.Window | Qt.WindowType.WindowStaysOnTopHint)
+        self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.WindowStaysOnTopHint | Qt.WindowType.Tool)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
+        self.setStyleSheet("background: transparent; border: 0px;")
         self.resize(560, 560)
         board.setParent(self)
         board.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
-        board.setStyleSheet("background: transparent;")
+        board.setAutoFillBackground(False)
+        board.setStyleSheet("background: transparent; border: 0px;")
         board.setMinimumSize(160, 160)
         board.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self.setCentralWidget(board)
@@ -310,7 +312,7 @@ class MainWindow(QMainWindow):
         self._calibrated_region = rect
         # Keep the settings available in the scrollable panel after calibration.
         size = min(rect.width(), rect.height())
-        self.board_popup.setGeometry(rect.x(), rect.y(), size, size + 110)
+        self.board_popup.setGeometry(rect.x(), rect.y(), size, size)
         self.board.setMinimumSize(80, 80)
         self.board.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self.board_popup.show()
