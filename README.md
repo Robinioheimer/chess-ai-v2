@@ -36,3 +36,15 @@ chess-ai-v2
 ```powershell
 pytest
 ```
+
+
+## Windows EXE build
+
+The Windows executable is built by GitHub Actions with Nuitka. To create a build:
+
+- Open **Actions → Build Windows EXE → Run workflow** for a test artifact.
+- For a versioned release, create and push a tag such as `v0.1.0`. The workflow builds `ChessAIV2.exe` and attaches it to the GitHub Release.
+
+The source project remains the development version. User settings are stored separately through Qt `QSettings`, so replacing the executable does not normally remove them. Stockfish is still selected separately in the app; it is not bundled into the executable.
+
+This is the first packaging step, not yet the in-app updater. The updater will later check GitHub Releases, verify the downloaded installer/executable, close the running app, replace the old build, and restart it. Until then, install a new build manually.
