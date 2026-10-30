@@ -6,6 +6,7 @@ import ctypes
 from ctypes import wintypes
 
 from PySide6.QtCore import Qt, QThread, Signal, QPoint, QRect
+from PySide6.QtGui import QPainter, QColor, QPen
 from PySide6.QtGui import QKeySequence
 from PySide6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
@@ -15,6 +16,51 @@ from PySide6.QtWidgets import (
 
 from chess_ai_v2.ui.board_widget import BoardWidget
 from chess_ai_v2.engine.worker import EngineWorker
+
+
+class RegionSelectionOverlay(QWidget):
+    selection_done = Signal(QRect)
+
+    def __init__(self, screen_geometry: QRect) -> None:
+        super().__init__(None)
+        self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.WindowStaysOnTopHint | Qt.WindowType.Tool)
+        self.setGeometry(screen_geometry)
+        self.setCursor(Qt.CursorShape.CrossCursor)
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
+        self.start = None
+        self.current = None
+        self.show()
+
+    def paintEvent(self, event) -> None:
+        painter = QPainter(self)
+        painter.fillRect(self.rect(), QColor(0, 0, 0, 145))
+        if self.current is not None:
+            rect = QRect(self.start, self.current).normalized()
+            painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_Clear)
+            painter.fillRect(rect, Qt.GlobalColor.transparent)
+            painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_SourceOver)
+            painter.setPen(QPen(QColor("#e5b93f"), 3))
+            painter.drawRect(rect)
+
+    def mousePressEvent(self, event) -> None:
+        if event.button() == Qt.MouseButton.LeftButton:
+            self.start = event.position().toPoint()
+            self.current = self.start
+            self.update()
+
+    def mouseMoveEvent(self, event) -> None:
+        if self.start is not None:
+            self.current = event.position().toPoint()
+            self.update()
+
+    def mouseReleaseEvent(self, event) -> None:
+        if self.start is None:
+            return
+        end = event.position().toPoint()
+        local = QRect(self.start, end).normalized()
+        global_rect = local.translated(self.geometry().topLeft())
+        self.selection_done.emit(global_rect)
+        self.close()
 
 
 class MainWindow(QMainWindow):
@@ -35,6 +81,7 @@ class MainWindow(QMainWindow):
         self._best_move_hotkey_registered = False
         self._mouse_listener = None
         self._selection_listener = None
+        self._selection_overlay = None
         self._selection_start = None
         self._calibrated_region = None
         self._external_drag_start = None
@@ -231,27 +278,16 @@ class MainWindow(QMainWindow):
         if sys.platform != "win32":
             self.status.setText("Bereichsauswahl benötigt Windows.")
             return
-        try:
-            from pynput import mouse
-            self._selection_start = None
-            self.hide()
-            self.status.setText("Ziehe einen Rahmen um das Schachbrett.")
-            def on_click(x, y, button, pressed):
-                if button != mouse.Button.left:
-                    return
-                if pressed:
-                    self._selection_start = (int(x), int(y))
-                elif self._selection_start is not None:
-                    x0, y0 = self._selection_start
-                    x1, y1 = int(x), int(y)
-                    self._selection_listener.stop()
-                    self.region_selected.emit(min(x0, x1), min(y0, y1), abs(x1-x0), abs(y1-y0))
-                    return False
-            self._selection_listener = mouse.Listener(on_click=on_click)
-            self._selection_listener.start()
-        except Exception as exc:
-            self.show()
-            self.status.setText(f"Bereichsauswahl fehlgeschlagen: {exc}")
+        screen = self.screen()
+        if screen is None:
+            self.status.setText("Kein Bildschirm für die Bereichsauswahl gefunden.")
+            return
+        self.hide()
+        self._selection_overlay = RegionSelectionOverlay(screen.geometry())
+        self._selection_overlay.selection_done.connect(
+            lambda rect: self.region_selected.emit(rect.x(), rect.y(), rect.width(), rect.height())
+        )
+        self._selection_overlay.destroyed.connect(lambda: self.show())
 
     def _apply_selected_region(self, x: int, y: int, width: int, height: int) -> None:
         if width < 80 or height < 80 or abs(width-height) > max(width, height) * 0.12:
